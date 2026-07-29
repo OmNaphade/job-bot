@@ -49,6 +49,21 @@ def init_db() -> None:
         )
         connection.execute(
             """
+            CREATE TABLE IF NOT EXISTS ingestion_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                started_at TEXT NOT NULL,
+                finished_at TEXT NOT NULL,
+                status TEXT NOT NULL,
+                fetched_count INTEGER NOT NULL DEFAULT 0,
+                matched_count INTEGER NOT NULL DEFAULT 0,
+                new_count INTEGER NOT NULL DEFAULT 0,
+                delivered_count INTEGER NOT NULL DEFAULT 0,
+                error_message TEXT
+            )
+            """
+        )
+        connection.execute(
+            """
             INSERT OR IGNORE INTO ingestion_settings
                 (id, enable_rss_sources, enable_linkedin_alerts, enable_naukri_alerts, allow_direct_scraping, poll_interval_hours)
             VALUES (1, 0, 0, 0, 0, 4)

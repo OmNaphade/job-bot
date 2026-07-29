@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.ingestion.scheduler import reschedule
 from app.ingestion.services.ingestion_service import IngestionService
+from app.models.ingestion_run import IngestionRun
 from app.models.ingestion_settings import IngestionSettings
 from app.models.job import Job, JobCreate
 from app.models.preference import KeywordUpdate, Preference, PreferenceCreate
 from app.services.errors import DuplicateResourceError
+from app.services.ingestion_run_service import IngestionRunService
 from app.services.ingestion_settings_service import IngestionSettingsService
 from app.services.job_service import JobService
 from app.services.preference_service import PreferenceService
@@ -27,6 +29,10 @@ def get_ingestion_settings_service() -> IngestionSettingsService:
 
 def get_ingestion_service() -> IngestionService:
     return IngestionService()
+
+
+def get_ingestion_run_service() -> IngestionRunService:
+    return IngestionRunService()
 
 
 @router.get("/health", tags=["health"])
@@ -85,6 +91,13 @@ def update_ingestion_settings(
 @router.post("/ingest", tags=["ingestion"])
 def ingest_jobs(service: IngestionService = Depends(get_ingestion_service)) -> dict[str, int]:
     return service.run()
+
+
+@router.get("/ingestion/runs", response_model=list[IngestionRun], tags=["ingestion"])
+def list_ingestion_runs(
+    limit: int = 20, service: IngestionRunService = Depends(get_ingestion_run_service)
+) -> list[IngestionRun]:
+    return service.get_recent_runs(limit)
 
 
 @router.post("/ingest/keywords", tags=["ingestion"])

@@ -59,6 +59,8 @@ The application has three main layers:
   - `id`, `keyword`, `kind` (`include` or `exclude`), `location` (stored, not yet used in matching); `UNIQUE(keyword, kind)`
 - `ingestion_settings`
   - Single row (`id = 1`): `enable_rss_sources`, `enable_linkedin_alerts`, `enable_naukri_alerts`, `allow_direct_scraping`, `poll_interval_hours`
+- `ingestion_runs`
+  - One row per ingestion pass (manual or scheduled): `id`, `started_at`, `finished_at`, `status` (`success`/`failed`), `fetched_count`, `matched_count`, `new_count`, `delivered_count`, `error_message`. Written by `IngestionService.run()` itself, in both the success and failure path, so a crashed run is recorded too (see `GET /ingestion/runs`).
 
 There is no separate "seen jobs" table — `jobs.link` being `UNIQUE`, combined with an atomic `INSERT OR IGNORE`, is the single dedup mechanism.
 
@@ -68,7 +70,8 @@ There is no separate "seen jobs" table — `jobs.link` being `UNIQUE`, combined 
 - `GET /jobs` / `POST /jobs` (409 on duplicate `link`)
 - `GET /preferences` / `POST /preferences` (body includes `kind: "include"|"exclude"`, 409 on duplicate) / `DELETE /preferences/{id}`
 - `GET /ingestion/settings` / `PUT /ingestion/settings` — reading/updating source toggles and poll interval; updating the interval reschedules the background job immediately, no restart needed.
-- `POST /ingest` — runs the ingestion pipeline immediately (same logic the scheduler runs automatically).
+- `POST /ingest` — runs the ingestion pipeline immediately (same logic the scheduler runs automatically). Returns `{"fetched", "matched", "new", "delivered"}`.
+- `GET /ingestion/runs?limit=20` — history of past ingestion runs (newest first): timestamps, status (`success`/`failed`), counts, and the error message for failed runs.
 - `POST /ingest/keywords` — bulk-replaces the `include`/`exclude` preference lists:
   ```json
   { "include_keywords": ["backend", "flutter", "python"], "exclude_keywords": ["senior", "manager"] }
@@ -98,12 +101,16 @@ Without these, ingestion still runs and stores matches — it just skips sending
 
 ### RSS/JSON sources (Tier A)
 
-Two real, verified, publicly-published feeds are wired in and work out of the box — just turn on `enable_rss_sources`:
+Six real, verified, publicly-published feeds are wired in and work out of the box — just turn on `enable_rss_sources`:
 
 - **WeWorkRemotely** (`weworkremotely`) — remote programming jobs RSS.
 - **Himalayas** (`himalayas`) — remote jobs RSS, includes a structured company-name field.
+- **Remotive** (`remotive`) — remote jobs RSS.
+- **NoDesk** (`nodesk`) — remote jobs RSS (note the feed is at `/index.xml`, not `/feed/`).
+- **Jobspresso** (`jobspresso`) — curated remote jobs RSS.
+- **RemoteOK** (`remoteok`) — JSON API (their RSS feed was discontinued/410 Gone; the JSON API is the current public replacement). Uses a separate adapter (`RemoteOkAdapter`) since it's JSON, not RSS/Atom, and their API 403s requests with no `User-Agent` header at all — a descriptive UA is sent to identify the client, which is not evasion of a login wall or JS rendering.
 
-Both are legitimate RSS feeds meant for exactly this kind of consumption — no scraping involved. Override `WEWORKREMOTELY_FEED_URL`/`HIMALAYAS_FEED_URL` if you want a different category feed than the defaults.
+All are legitimate feeds/APIs meant for exactly this kind of consumption — no scraping involved. Override the matching env var (`WEWORKREMOTELY_FEED_URL`, `HIMALAYAS_FEED_URL`, `REMOTIVE_FEED_URL`, `NODESK_FEED_URL`, `JOBSPRESSO_FEED_URL`, `REMOTEOK_API_URL`) if you want a different feed than the defaults.
 
 **Unstop and Foundit are not wired in** — both render job listings client-side (JavaScript after page load), so their real API endpoint can't be found with a plain HTTP fetch; it genuinely needs a browser's DevTools Network tab. If you want them:
 
@@ -112,6 +119,35 @@ Both are legitimate RSS feeds meant for exactly this kind of consumption — no 
 3. Set `UNSTOP_FEED_URL` / `FOUNDIT_FEED_URL` to what you find.
 
 If a toggle is on but its URL/credentials are missing, that source just logs a warning and contributes nothing — it won't crash the run.
+
+### Sources evaluated and NOT wired in
+
+The following were checked (live HTTP fetch, not guessed) and have no public RSS/JSON feed a plain HTTP client can consume — each was either login-gated, renders job listings client-side via JavaScript, is paywalled, has discontinued its feed, or isn't actually a job-listings source:
+
+| Source | Why not |
+|---|---|
+| Naukri | No official feed (handled instead via email alerts — see above) |
+| LinkedIn | No public feed (handled instead via email alerts — see above) |
+| Fiverr | Gig marketplace, not a job-postings board |
+| Upwork | RSS saved-search feed discontinued (`410 Gone`) |
+| Indeed | RSS discontinued (`404`) |
+| Remote Rocketship | Blocked by Cloudflare bot-challenge on plain GET |
+| Eztrackr | It's an application-tracker tool/extension, not a job board — no listings to feed |
+| Toptal | Application-gated freelance platform, no public feed |
+| Skip The Drive | Feed URLs return the HTML page, not XML — non-functional |
+| FlexJobs | Subscription/paywalled, no public feed |
+| Remote.co | Feed endpoint unreachable (likely bot-protected); unconfirmed either way |
+| AngelList / Wellfound | No official public feed |
+| Freelancer.com | `/jobs/rss` returns an HTML search page, not real RSS/XML |
+| Working Nomads | `/jobs/rss` returns the Angular SPA shell, not RSS — client-side rendered |
+| SimplyHired | No working public feed found |
+| Stack Overflow Jobs | Shut down March 2022 |
+| Glassdoor | No public feed, login required |
+| Monster | No public feed |
+| CareerCloud | No public feed |
+| CareerBuilder | No public feed |
+
+If any of these later publish a genuine feed, wire it in the same way as the others: add an env var + default in `backend/app/core/config.py`, then register an `RssAdapter` (or a dedicated adapter, if the format isn't RSS/Atom) in `backend/app/ingestion/adapters/safe_registry.py`.
 
 ## Configuring environment variables
 
@@ -131,6 +167,10 @@ Copy `backend/.env.example` to `backend/.env` and fill in real values — it's l
 | `NAUKRI_ALERT_SENDER` | Sender address to filter Naukri alert emails | `noreply@naukri.com` |
 | `WEWORKREMOTELY_FEED_URL` | RSS feed URL | `weworkremotely.com/categories/remote-programming-jobs.rss` |
 | `HIMALAYAS_FEED_URL` | RSS feed URL | `himalayas.app/jobs/rss` |
+| `REMOTIVE_FEED_URL` | RSS feed URL | `remotive.com/remote-jobs/feed` |
+| `NODESK_FEED_URL` | RSS feed URL | `nodesk.co/remote-jobs/index.xml` |
+| `JOBSPRESSO_FEED_URL` | RSS feed URL | `jobspresso.co/feed/` |
+| `REMOTEOK_API_URL` | JSON API URL | `remoteok.com/api` |
 | `UNSTOP_FEED_URL` / `FOUNDIT_FEED_URL` | RSS/JSON feed URL, once you've found the real one | — |
 
 ## Running locally
@@ -172,6 +212,15 @@ Running the FastAPI app locally (previous section) means the bot only polls whil
 2. **Allow the workflow to push**: Settings → Actions → General → Workflow permissions → "Read and write permissions". Without this, the DB commit-back step fails (the ingestion itself still runs fine, but state won't persist between runs).
 3. **Enable/tune settings and keywords once**, either by editing `backend/job_alert.db` via a local run (see below) or by running the local backend, changing things through the Flutter app or API, then committing the resulting `job_alert.db`.
 4. Trigger it once manually via the **Actions** tab → "Scheduled ingestion" → "Run workflow" to confirm it works before waiting for the first scheduled run.
+
+### Run history / logs
+
+Every run — success or failure, scheduled or manual — is recorded as a row in the `ingestion_runs` table (see schema above), which lives in `job_alert.db` and gets committed back to the repo like everything else. Two ways to see it:
+
+- **`GET /ingestion/runs`** — query the persisted history (timestamps, counts, error message if it failed) from the API/Flutter app.
+- **GitHub Actions run summary** — each scheduled run also writes a short markdown summary (fetched/matched/new/delivered counts, or the error) directly to that run's page under the **Actions** tab, no DB query needed. Click into any past run → the "Summary" tab.
+
+The commit-back step runs even when ingestion itself fails (`if: always()` in `ingest.yml`), so a failed run's history is pushed to the repo too, not just successful ones — and the workflow step itself still exits non-zero on failure, which is what drives GitHub's own "workflow run failed" email notification to repo watchers.
 
 ### Don't run both at once
 

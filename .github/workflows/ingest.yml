@@ -46,11 +46,19 @@ jobs:
           NAUKRI_ALERT_SENDER: ${{ secrets.NAUKRI_ALERT_SENDER }}
           WEWORKREMOTELY_FEED_URL: ${{ secrets.WEWORKREMOTELY_FEED_URL }}
           HIMALAYAS_FEED_URL: ${{ secrets.HIMALAYAS_FEED_URL }}
+          REMOTIVE_FEED_URL: ${{ secrets.REMOTIVE_FEED_URL }}
+          NODESK_FEED_URL: ${{ secrets.NODESK_FEED_URL }}
+          JOBSPRESSO_FEED_URL: ${{ secrets.JOBSPRESSO_FEED_URL }}
+          REMOTEOK_API_URL: ${{ secrets.REMOTEOK_API_URL }}
           UNSTOP_FEED_URL: ${{ secrets.UNSTOP_FEED_URL }}
           FOUNDIT_FEED_URL: ${{ secrets.FOUNDIT_FEED_URL }}
         run: python -m scripts.run_ingestion_once
 
+      # always() so a failed run's history (already recorded to job_alert.db by
+      # IngestionService before it re-raised) still gets committed and is visible
+      # on GitHub -- not just success runs.
       - name: Commit updated database if it changed
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"

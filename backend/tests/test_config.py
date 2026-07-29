@@ -20,12 +20,20 @@ def test_empty_string_env_var_falls_back_to_default(monkeypatch):
         ALERT_EMAIL_IMAP_HOST="",
         WEWORKREMOTELY_FEED_URL="",
         HIMALAYAS_FEED_URL="",
+        REMOTIVE_FEED_URL="",
+        NODESK_FEED_URL="",
+        JOBSPRESSO_FEED_URL="",
+        REMOTEOK_API_URL="",
     )
 
     assert settings.alert_email_imap_port == 993
     assert settings.alert_email_imap_host == "imap.gmail.com"
     assert settings.weworkremotely_feed_url == "https://weworkremotely.com/categories/remote-programming-jobs.rss"
     assert settings.himalayas_feed_url == "https://himalayas.app/jobs/rss"
+    assert settings.remotive_feed_url == "https://remotive.com/remote-jobs/feed"
+    assert settings.nodesk_feed_url == "https://nodesk.co/remote-jobs/index.xml"
+    assert settings.jobspresso_feed_url == "https://jobspresso.co/feed/"
+    assert settings.remoteok_api_url == "https://remoteok.com/api"
 
 
 def test_empty_string_env_var_is_treated_as_none_for_optional_fields(monkeypatch):

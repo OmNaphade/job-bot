@@ -44,12 +44,33 @@ class Settings:
     himalayas_feed_url: str | None = field(
         default_factory=lambda: _env("HIMALAYAS_FEED_URL", "https://himalayas.app/jobs/rss")
     )
+    remotive_feed_url: str | None = field(
+        default_factory=lambda: _env("REMOTIVE_FEED_URL", "https://remotive.com/remote-jobs/feed")
+    )
+    nodesk_feed_url: str | None = field(
+        default_factory=lambda: _env("NODESK_FEED_URL", "https://nodesk.co/remote-jobs/index.xml")
+    )
+    jobspresso_feed_url: str | None = field(
+        default_factory=lambda: _env("JOBSPRESSO_FEED_URL", "https://jobspresso.co/feed/")
+    )
+    # RemoteOK's RSS feed (remoteok.com/remote-jobs.rss) was discontinued (410 Gone);
+    # their JSON API is the current, publicly-documented replacement.
+    remoteok_api_url: str | None = field(default_factory=lambda: _env("REMOTEOK_API_URL", "https://remoteok.com/api"))
 
     # Unstop/Foundit render job listings client-side (JS after page load) -- their real API
     # endpoint isn't discoverable via a plain HTTP fetch and hasn't been guessed at here.
     # Find it via the portal's search page (DevTools -> Network -> XHR) and set it below if you want it.
     unstop_feed_url: str | None = field(default_factory=lambda: _env("UNSTOP_FEED_URL"))
     foundit_feed_url: str | None = field(default_factory=lambda: _env("FOUNDIT_FEED_URL"))
+
+    # Evaluated and confirmed to have NO public RSS/JSON feed (login-gated, JS-rendered,
+    # paywalled, or discontinued) -- see README "Setting up the real sources" for detail
+    # per source: Naukri, LinkedIn (both handled instead via email alerts, see below),
+    # Fiverr, Upwork (RSS discontinued, 410 Gone), Indeed (RSS discontinued),
+    # Remote Rocketship (Cloudflare-blocked), Eztrackr (an application tracker, not a job
+    # board), Toptal, Skip The Drive, FlexJobs, Remote.co, AngelList/Wellfound, Freelancer,
+    # Working Nomads (JS-rendered), SimplyHired, Stack Overflow Jobs (shut down 2022),
+    # Glassdoor, Monster, CareerCloud, CareerBuilder.
 
 
 settings = Settings()
