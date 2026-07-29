@@ -1,0 +1,9 @@
+fastapi>=0.110.0,<0.112.0
+uvicorn[standard]>=0.30.0,<0.31.0
+pydantic>=2.7.0,<2.9.0
+apscheduler>=3.10.0,<3.11.0
+feedparser>=6.0.0,<6.1.0
+beautifulsoup4>=4.12.0,<4.13.0
+requests>=2.31.0,<3.0.0
+python-dotenv>=1.0.0,<2.0.0
+pytest>=8.0.0,<9.0.0
