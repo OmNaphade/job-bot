@@ -64,8 +64,8 @@ class Settings:
     foundit_feed_url: str | None = field(default_factory=lambda: _env("FOUNDIT_FEED_URL"))
 
     # Evaluated and confirmed to have NO public RSS/JSON feed (login-gated, JS-rendered,
-    # paywalled, or discontinued) -- see README "Setting up the real sources" for detail
-    # per source: Naukri, LinkedIn (both handled instead via email alerts, see below),
+    # paywalled, or discontinued) -- see bot_docs/SOURCES.md for detail per source:
+    # Naukri, LinkedIn (both handled instead via email alerts, see below),
     # Fiverr, Upwork (RSS discontinued, 410 Gone), Indeed (RSS discontinued),
     # Remote Rocketship (Cloudflare-blocked), Eztrackr (an application tracker, not a job
     # board), Toptal, Skip The Drive, FlexJobs, Remote.co, AngelList/Wellfound, Freelancer,
