@@ -2,9 +2,11 @@ name: Scheduled ingestion
 
 on:
   schedule:
-    # Every 4 hours. GitHub may delay scheduled runs under load; this is a
-    # best-effort cadence, not a hard guarantee.
-    - cron: "0 */4 * * *"
+    # Hourly (24 runs/day) -- frequent enough to feel responsive for active
+    # job hunting without relying on sub-hourly cron, which GitHub's own docs
+    # warn is prone to delay/skipping under load. GitHub may still delay
+    # scheduled runs under load; this is a best-effort cadence, not a guarantee.
+    - cron: "0 * * * *"
   workflow_dispatch: {}
 
 concurrency:

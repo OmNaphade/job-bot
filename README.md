@@ -161,7 +161,7 @@ The Flutter app always talks to `127.0.0.1:9000` — it only works while the bac
 
 ## Deploying: GitHub Actions as the always-on runner
 
-Running the FastAPI app locally (previous section) means the bot only polls while your machine is on. `.github/workflows/ingest.yml` avoids that entirely: a scheduled GitHub Actions workflow runs one ingestion pass every 4 hours on GitHub's infrastructure, with no server of your own required. State (seen jobs, ingestion settings, saved keywords) lives in `backend/job_alert.db`, which the workflow commits back to the repo after every run — this is why `job_alert.db` is intentionally tracked in git rather than ignored.
+Running the FastAPI app locally (previous section) means the bot only polls while your machine is on. `.github/workflows/ingest.yml` avoids that entirely: a scheduled GitHub Actions workflow runs one ingestion pass every hour on GitHub's infrastructure, with no server of your own required. State (seen jobs, ingestion settings, saved keywords) lives in `backend/job_alert.db`, which the workflow commits back to the repo after every run — this is why `job_alert.db` is intentionally tracked in git rather than ignored.
 
 ### One-time setup
 
