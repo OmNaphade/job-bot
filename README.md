@@ -37,6 +37,8 @@ The application has three main layers:
   - `adapters/email_adapter.py` + `adapters/email_parsers.py`: reads LinkedIn/Naukri job-alert emails via IMAP and parses postings out of the HTML body (Tier B — never talks to linkedin.com/naukri.com directly).
 - `backend/app/core/config.py`
   - Static/secret configuration read from environment variables (Telegram token/chat id, IMAP credentials, alert sender addresses, feed URLs).
+- `backend/scripts/run_ingestion_once.py`
+  - Short-lived entrypoint for a single ingestion pass — what the GitHub Actions scheduled workflow actually runs, as opposed to the long-running `main.py` + APScheduler used for local/always-on operation.
 
 ### Frontend
 
@@ -145,7 +147,7 @@ REM edit .env with real values, then:
 uvicorn main:app --reload --host 127.0.0.1 --port 9000
 ```
 
-The scheduler starts automatically with the app — as long as this process is running, it polls every `poll_interval_hours` and alerts on new matches with no further interaction. This assumes the process itself stays up (e.g. via a terminal left open, a Windows service, or Task Scheduler) — it is not a serverless/cron design.
+The scheduler starts automatically with the app — as long as this process is running, it polls every `poll_interval_hours` and alerts on new matches with no further interaction. This assumes the process itself stays up (e.g. via a terminal left open, a Windows service, or Task Scheduler).
 
 ### Frontend
 
@@ -154,6 +156,29 @@ cd frontend
 flutter pub get
 flutter run -d chrome    # or: flutter run -d windows
 ```
+
+The Flutter app always talks to `127.0.0.1:9000` — it only works while the backend above is running locally. It's a dashboard/config UI, not required for the bot itself to function (see below).
+
+## Deploying: GitHub Actions as the always-on runner
+
+Running the FastAPI app locally (previous section) means the bot only polls while your machine is on. `.github/workflows/ingest.yml` avoids that entirely: a scheduled GitHub Actions workflow runs one ingestion pass every 4 hours on GitHub's infrastructure, with no server of your own required. State (seen jobs, ingestion settings, saved keywords) lives in `backend/job_alert.db`, which the workflow commits back to the repo after every run — this is why `job_alert.db` is intentionally tracked in git rather than ignored.
+
+### One-time setup
+
+1. **Add repository secrets** (Settings → Secrets and variables → Actions → New repository secret) — same names as the `.env` variables, added one at a time since there's no way to bulk-import from a script:
+   - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (required for alerts)
+   - `ALERT_EMAIL_ADDRESS`, `ALERT_EMAIL_APP_PASSWORD` (if using LinkedIn/Naukri email alerts)
+   - Optionally: `ALERT_EMAIL_IMAP_HOST`, `ALERT_EMAIL_IMAP_PORT`, `LINKEDIN_ALERT_SENDER`, `NAUKRI_ALERT_SENDER`, `WEWORKREMOTELY_FEED_URL`, `HIMALAYAS_FEED_URL`, `UNSTOP_FEED_URL`, `FOUNDIT_FEED_URL`
+2. **Allow the workflow to push**: Settings → Actions → General → Workflow permissions → "Read and write permissions". Without this, the DB commit-back step fails (the ingestion itself still runs fine, but state won't persist between runs).
+3. **Enable/tune settings and keywords once**, either by editing `backend/job_alert.db` via a local run (see below) or by running the local backend, changing things through the Flutter app or API, then committing the resulting `job_alert.db`.
+4. Trigger it once manually via the **Actions** tab → "Scheduled ingestion" → "Run workflow" to confirm it works before waiting for the first scheduled run.
+
+### Don't run both at once
+
+The local FastAPI scheduler and the GitHub Actions cron runner each operate on their own copy of `job_alert.db` — they don't share state in real time, only whenever you `git pull`/`git push`. If you leave the local server running continuously *and* have the Actions workflow enabled, both will independently detect the same new postings and **you'll get duplicate Telegram alerts**. Pick one as the primary runner:
+
+- **Actions as primary (recommended, matches "no laptop dependency")**: don't leave the local backend running unattended. Use it only for occasional dashboard/config sessions — `git pull` first, make your changes, `git push` after, so the next scheduled run picks them up.
+- **Local as primary**: keep the Actions workflow disabled (Actions tab → "Scheduled ingestion" → "···" → Disable workflow), and run the FastAPI backend continuously instead (previous section).
 
 ## Testing
 
@@ -177,12 +202,10 @@ flutter test
 
 ## CI/CD
 
-`.github/workflows/ci.yml` runs on every push/PR to `main`:
+Two separate workflows, deliberately not combined:
 
-- **Backend job**: installs `requirements.txt`, byte-compiles the whole app (`python -m compileall`), runs `pytest -q`.
-- **Frontend job**: `flutter pub get`, `flutter analyze`, `flutter test`.
-
-Both jobs are self-contained — no secrets, no live network calls, nothing external required to pass. A red CI run means an actual regression, not a missing credential.
+- **`.github/workflows/ci.yml`** — runs on every push/PR to `main`. Backend job installs `requirements.txt`, byte-compiles the app (`python -m compileall`), runs `pytest -q`. Frontend job runs `flutter pub get`, `flutter analyze`, `flutter test`. Self-contained — no secrets, no live network calls required to pass. A red run means an actual regression. Commits made by the ingestion workflow include `[skip ci]` so a routine DB update doesn't re-trigger the whole test suite.
+- **`.github/workflows/ingest.yml`** — the scheduled cron runner described above. Needs the repository secrets and write permissions set up once (see "Deploying").
 
 ## Notes
 
