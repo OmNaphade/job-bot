@@ -16,6 +16,7 @@ _USER_AGENT = "job-alert-bot/1.0"
 
 class RemoteOkAdapter(BaseAdapter):
     def __init__(self, api_url: Optional[str], enabled: bool = False) -> None:
+        self.source_name = "remoteok"
         self.api_url = api_url
         self.enabled = enabled
 

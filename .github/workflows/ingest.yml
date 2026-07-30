@@ -53,6 +53,9 @@ jobs:
           REMOTEOK_API_URL: ${{ secrets.REMOTEOK_API_URL }}
           UNSTOP_FEED_URL: ${{ secrets.UNSTOP_FEED_URL }}
           FOUNDIT_FEED_URL: ${{ secrets.FOUNDIT_FEED_URL }}
+          GREENHOUSE_BOARD_TOKENS: ${{ secrets.GREENHOUSE_BOARD_TOKENS }}
+          LEVER_COMPANY_SLUGS: ${{ secrets.LEVER_COMPANY_SLUGS }}
+          ASHBY_BOARD_NAMES: ${{ secrets.ASHBY_BOARD_NAMES }}
         run: python -m scripts.run_ingestion_once
 
       # always() so a failed run's history (already recorded to job_alert.db by

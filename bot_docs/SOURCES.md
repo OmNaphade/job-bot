@@ -41,6 +41,19 @@ All are legitimate feeds/APIs meant for exactly this kind of consumption — no 
 
 If a toggle is on but its URL/credentials are missing, that source just logs a warning and contributes nothing — it won't crash the run.
 
+## Direct-from-company-site sources (Tier C)
+
+Greenhouse, Lever, and Ashby each publish a public per-company JSON API meant for embedding that company's own job listings on their careers page. Consuming it isn't scraping — no HTML parsing, no login wall, no JS rendering — but it is direct-from-a-single-company rather than an aggregator, so these are gated by the **`allow_direct_scraping`** ingestion setting (Flutter settings screen or `PUT /ingestion/settings`), separately from the RSS toggle.
+
+1. Find the company's board token/slug from their careers page URL:
+   - Greenhouse: `boards.greenhouse.io/<token>` (or `<token>.greenhouse.io`)
+   - Lever: `jobs.lever.co/<slug>`
+   - Ashby: `jobs.ashbyhq.com/<name>`
+2. Set the matching env var to a comma-separated list of tokens — `GREENHOUSE_BOARD_TOKENS`, `LEVER_COMPANY_SLUGS`, `ASHBY_BOARD_NAMES`. Each token becomes its own adapter, registered automatically (`app/ingestion/adapters/safe_registry.py`), sourced as `greenhouse:<token>` / `lever:<slug>` / `ashby:<name>` in the `jobs` table.
+3. Turn on `allow_direct_scraping`.
+
+Not every company uses one of these three ATS platforms, and a guessed token that doesn't exist just 404s — logged as a warning, contributes zero candidates, doesn't break the run (same graceful-degradation pattern as every other adapter). A fully custom company careers page (not on a known ATS) has no public API to call and would need bespoke, more fragile HTML scraping — not implemented here.
+
 ## Sources evaluated and NOT wired in
 
 The following were checked (live HTTP fetch, not guessed) and have no public RSS/JSON feed a plain HTTP client can consume — each was either login-gated, renders job listings client-side via JavaScript, is paywalled, has discontinued its feed, or isn't actually a job-listings source:
@@ -93,5 +106,8 @@ Copy `backend/.env.example` to `backend/.env` and fill in real values — it's l
 | `JOBSPRESSO_FEED_URL` | RSS feed URL | `jobspresso.co/feed/` |
 | `REMOTEOK_API_URL` | JSON API URL | `remoteok.com/api` |
 | `UNSTOP_FEED_URL` / `FOUNDIT_FEED_URL` | RSS/JSON feed URL, once you've found the real one | — |
+| `GREENHOUSE_BOARD_TOKENS` | Comma-separated Greenhouse board tokens (also needs `allow_direct_scraping` on) | — |
+| `LEVER_COMPANY_SLUGS` | Comma-separated Lever company slugs (also needs `allow_direct_scraping` on) | — |
+| `ASHBY_BOARD_NAMES` | Comma-separated Ashby board names (also needs `allow_direct_scraping` on) | — |
 
 None of these are secrets by nature except the Telegram token/chat id and the email address/app password — treat those four as sensitive; everything else is a public feed URL or sender address.

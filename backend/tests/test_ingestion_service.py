@@ -5,7 +5,14 @@ from app.repositories.ingestion_run_repository import IngestionRunRepository
 def test_run_with_all_sources_disabled_records_a_successful_run(tmp_db):
     result = IngestionService().run()
 
-    assert result == {"fetched": 0, "matched": 0, "new": 0, "delivered": 0}
+    assert result["fetched"] == 0
+    assert result["matched"] == 0
+    assert result["new"] == 0
+    assert result["delivered"] == 0
+    # Every registered source is reported, even disabled ones fetching nothing.
+    assert result["fetched_by_source"]
+    assert all(count == 0 for count in result["fetched_by_source"].values())
+    assert result["matched_by_source"] == {}
 
     runs = IngestionRunRepository().list_recent(limit=1)
     assert len(runs) == 1

@@ -63,6 +63,14 @@ class Settings:
     unstop_feed_url: str | None = field(default_factory=lambda: _env("UNSTOP_FEED_URL"))
     foundit_feed_url: str | None = field(default_factory=lambda: _env("FOUNDIT_FEED_URL"))
 
+    # Direct-from-company-site sources (gated by `allow_direct_scraping`, not
+    # `enable_rss_sources`). Each is a comma-separated list of board tokens/slugs --
+    # find them in the company's careers page URL, e.g. boards.greenhouse.io/stripe
+    # -> "stripe". Empty by default; nothing is fetched until you add tokens.
+    greenhouse_board_tokens: str | None = field(default_factory=lambda: _env("GREENHOUSE_BOARD_TOKENS"))
+    lever_company_slugs: str | None = field(default_factory=lambda: _env("LEVER_COMPANY_SLUGS"))
+    ashby_board_names: str | None = field(default_factory=lambda: _env("ASHBY_BOARD_NAMES"))
+
     # Evaluated and confirmed to have NO public RSS/JSON feed (login-gated, JS-rendered,
     # paywalled, or discontinued) -- see bot_docs/SOURCES.md for detail per source:
     # Naukri, LinkedIn (both handled instead via email alerts, see below),

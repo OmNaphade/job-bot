@@ -27,7 +27,7 @@ A continuously-running job-monitoring bot with a FastAPI backend and a Flutter d
 
 ## About
 
-Job hunting means checking the same handful of boards over and over. This runs the checking for you: an ingestion pipeline fetches candidate postings from several remote-job RSS/JSON feeds plus your own LinkedIn/Naukri saved-search email alerts, filters them against include/exclude keywords you set, drops anything already seen, and sends a Telegram digest for what's actually new. It's designed to never scrape LinkedIn/Naukri directly — those two go through your own email alerts instead, everything else uses feeds meant for exactly this kind of consumption.
+Job hunting means checking the same handful of boards over and over. This runs the checking for you: an ingestion pipeline fetches candidate postings from several remote-job RSS/JSON feeds, your own LinkedIn/Naukri saved-search email alerts, and (optionally) specific companies' own Greenhouse/Lever/Ashby job boards, filters them against include/exclude keywords you set, drops anything already seen, and sends a Telegram digest for what's actually new. It's designed to never scrape LinkedIn/Naukri directly — those two go through your own email alerts instead, everything else uses feeds/APIs meant for exactly this kind of consumption.
 
 It runs unattended via a scheduled GitHub Actions workflow (hourly), so it doesn't depend on a laptop staying on. The Flutter app is an optional dashboard on top, not a requirement for the bot to function.
 
@@ -44,11 +44,12 @@ It runs unattended via a scheduled GitHub Actions workflow (hourly), so it doesn
 
 - Polls 6 verified RSS/JSON remote-job feeds (WeWorkRemotely, Himalayas, Remotive, NoDesk, Jobspresso, RemoteOK) with no scraping involved
 - LinkedIn/Naukri support via your own saved-search email alerts (IMAP), never talks to linkedin.com/naukri.com directly
+- Optional direct-from-company-site sources — pulls postings straight from a company's own Greenhouse/Lever/Ashby job board API, per company you configure
 - Include/exclude keyword matching against title/company/location
 - Atomic cross-run dedup at the database layer — safe to trigger a manual check anytime, even mid-scheduled-run
 - Telegram digest notification the moment something new matches
 - Runs hourly on GitHub's infrastructure — no server or always-on machine required
-- Every ingestion run (success or failure) is recorded with timestamps, counts, and error detail
+- Every ingestion run (success or failure) is recorded with timestamps and aggregate counts; a per-source fetched/matched breakdown is logged and written to the GitHub Actions run summary for every run
 - Flutter dashboard for stored jobs, on-demand checks, and source/keyword configuration
 
 ## Demo
@@ -135,6 +136,7 @@ The primary way to run this is **not** locally — `.github/workflows/ingest.yml
 - [ ] Validate the LinkedIn/Naukri email parsers against a real alert email (written against known structure, untested live)
 - [ ] Use `preferences.location` in matching (currently stored but unused)
 - [ ] Surface ingestion run history in the Flutter dashboard (`GET /ingestion/runs` already exists, just no UI for it yet)
+- [ ] Pull postings from public Telegram job-posting channels — needs a personal-account MTProto login (Telethon/Pyrogram), not just the bot API, plus a per-channel message parser; scoping, not started
 
 ## Security
 

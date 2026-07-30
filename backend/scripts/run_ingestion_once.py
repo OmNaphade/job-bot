@@ -35,12 +35,20 @@ def main() -> None:
         raise
 
     logger.info("Ingestion run result: %s", result)
+
+    source_rows = "\n".join(
+        f"| {source} | {fetched} | {result['matched_by_source'].get(source, 0)} |"
+        for source, fetched in result["fetched_by_source"].items()
+    )
     _write_step_summary(
         "### Ingestion run succeeded\n\n"
         f"- Fetched: {result['fetched']}\n"
         f"- Matched: {result['matched']}\n"
         f"- New: {result['new']}\n"
-        f"- Delivered to Telegram: {result['delivered']}\n"
+        f"- Delivered to Telegram: {result['delivered']}\n\n"
+        "| Source | Fetched | Matched |\n"
+        "|---|---|---|\n"
+        f"{source_rows}\n"
     )
 
 

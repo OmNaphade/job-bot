@@ -1,3 +1,5 @@
+from typing import Any
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from app.ingestion.scheduler import reschedule
@@ -89,7 +91,7 @@ def update_ingestion_settings(
 
 
 @router.post("/ingest", tags=["ingestion"])
-def ingest_jobs(service: IngestionService = Depends(get_ingestion_service)) -> dict[str, int]:
+def ingest_jobs(service: IngestionService = Depends(get_ingestion_service)) -> dict[str, Any]:
     return service.run()
 
 

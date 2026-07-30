@@ -1,4 +1,5 @@
 import logging
+from collections import Counter
 from datetime import datetime, timezone
 
 from app.ingestion.adapters.safe_registry import SafeAdapterRegistry
@@ -32,7 +33,9 @@ class IngestionService:
             matcher = MatcherService(self.preference_service.get_keyword_config())
 
             candidates = registry.fetch_all()
+            fetched_by_source = dict(registry.last_fetch_counts)
             matched = [candidate for candidate in candidates if matcher.match(candidate)]
+            matched_by_source = dict(Counter(candidate.source for candidate in matched))
             deduped = self.dedup.filter_new(matched)
 
             new_candidates = [
@@ -45,8 +48,9 @@ class IngestionService:
             raise
 
         logger.info(
-            "Ingestion run complete: fetched=%d matched=%d new=%d delivered=%d",
+            "Ingestion run complete: fetched=%d matched=%d new=%d delivered=%d | fetched by source: %s | matched by source: %s",
             len(candidates), len(matched), len(new_candidates), delivered,
+            fetched_by_source, matched_by_source,
         )
         self._record_run(
             started_at,
@@ -56,7 +60,14 @@ class IngestionService:
             new_count=len(new_candidates),
             delivered_count=delivered,
         )
-        return {"fetched": len(candidates), "matched": len(matched), "new": len(new_candidates), "delivered": delivered}
+        return {
+            "fetched": len(candidates),
+            "matched": len(matched),
+            "new": len(new_candidates),
+            "delivered": delivered,
+            "fetched_by_source": fetched_by_source,
+            "matched_by_source": matched_by_source,
+        }
 
     def _record_run(
         self,

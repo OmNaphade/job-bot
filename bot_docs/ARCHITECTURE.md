@@ -31,6 +31,7 @@ The application has three main layers:
   - `services/notification_service.py`: sends a Telegram digest message for newly-persisted matches.
   - `adapters/rss_adapter.py`: fetches and parses a configured RSS/Atom feed (most Tier A sources).
   - `adapters/remoteok_adapter.py`: fetches RemoteOK's JSON API (its RSS feed was discontinued) — a dedicated adapter since the payload isn't RSS/Atom.
+  - `adapters/ats_adapters.py`: `GreenhouseAdapter`/`LeverAdapter`/`AshbyAdapter` — pull postings directly from a company's public ATS job-board API (Tier C, gated by `allow_direct_scraping`, not `enable_rss_sources`). One instance per configured board token, registered dynamically from the comma-separated `GREENHOUSE_BOARD_TOKENS`/`LEVER_COMPANY_SLUGS`/`ASHBY_BOARD_NAMES` env vars — see [SOURCES.md](SOURCES.md).
   - `adapters/email_adapter.py` + `adapters/email_parsers.py`: reads LinkedIn/Naukri job-alert emails via IMAP and parses postings out of the HTML body (Tier B — never talks to linkedin.com/naukri.com directly).
 - `backend/app/core/config.py`
   - Static/secret configuration read from environment variables (Telegram token/chat id, IMAP credentials, alert sender addresses, feed URLs).
@@ -74,13 +75,17 @@ There is no separate "seen jobs" table — `jobs.link` being `UNIQUE`, combined 
 
 Any adapter-level failure (bad feed URL, network error, missing credentials) is caught and logged inside that adapter — it contributes zero candidates and does not abort the run. Only an unexpected failure in matching/dedup/persistence/notification aborts the run, and even then the run is recorded as `failed` with the error message before the exception propagates.
 
+### Per-source visibility
+
+`SafeAdapterRegistry.fetch_all()` logs one INFO line per source (`Source 'X': checked, fetched N candidate(s)`, or `disabled, skipped`) plus a summary line with every source's count. `IngestionService.run()` additionally computes a matched-count-per-source breakdown and logs both breakdowns together, and returns them in its result dict as `fetched_by_source` / `matched_by_source` (in addition to the existing aggregate `fetched`/`matched`/`new`/`delivered`). `scripts/run_ingestion_once.py` renders that breakdown as a per-source table in the GitHub Actions step summary, so you can see exactly which sources returned how much without reading raw logs — see [OPERATIONS.md](OPERATIONS.md#run-history--logs).
+
 ## API reference
 
 - `GET /health` → `{"status": "ok"}`
 - `GET /jobs` / `POST /jobs` (409 on duplicate `link`)
 - `GET /preferences` / `POST /preferences` (body includes `kind: "include"|"exclude"`, 409 on duplicate) / `DELETE /preferences/{id}`
 - `GET /ingestion/settings` / `PUT /ingestion/settings` — reading/updating source toggles and poll interval; updating the interval reschedules the background job immediately, no restart needed.
-- `POST /ingest` — runs the ingestion pipeline immediately (same logic the scheduler runs automatically). Returns `{"fetched", "matched", "new", "delivered"}`.
+- `POST /ingest` — runs the ingestion pipeline immediately (same logic the scheduler runs automatically). Returns `{"fetched", "matched", "new", "delivered", "fetched_by_source", "matched_by_source"}`.
 - `GET /ingestion/runs?limit=20` — history of past ingestion runs (newest first): timestamps, status (`success`/`failed`), counts, and the error message for failed runs.
 - `POST /ingest/keywords` — bulk-replaces the `include`/`exclude` preference lists:
   ```json

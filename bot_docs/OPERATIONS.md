@@ -28,12 +28,12 @@ The Flutter app always talks to `127.0.0.1:9000` — it only works while the bac
 
 ## Deploying: GitHub Actions as the always-on runner
 
-Running the FastAPI app locally means the bot only polls while your machine is on. `.github/workflows/ingest.yml` avoids that entirely: a scheduled GitHub Actions workflow runs one ingestion pass every hour (`cron: "0 * * * *"`, 24 runs/day) on GitHub's infrastructure, with no server of your own required. State (seen jobs, ingestion settings, saved keywords, run history) lives in `backend/job_alert.db`, which the workflow commits back to the repo after every run — this is why `job_alert.db` is intentionally tracked in git rather than ignored.
+Running the FastAPI app locally means the bot only polls while your machine is on. `.github/workflows/ingest.yml` avoids that entirely: a scheduled GitHub Actions workflow runs one ingestion pass every hour (`cron: "17 * * * *"`, 24 runs/day — offset from the top of the hour to dodge the peak-load congestion GitHub sees at `:00`) on GitHub's infrastructure, with no server of your own required. State (seen jobs, ingestion settings, saved keywords, run history) lives in `backend/job_alert.db`, which the workflow commits back to the repo after every run — this is why `job_alert.db` is intentionally tracked in git rather than ignored.
 
 The schedule runs entirely on GitHub's servers — it's unaffected by whether any of your own devices are online.
 
 Two caveats:
-- GitHub doesn't guarantee exact cron timing under load — runs can be delayed by minutes, or occasionally skipped; there's no backfill.
+- GitHub doesn't guarantee exact cron timing under load — in practice, runs have landed anywhere from a few minutes to ~45 minutes after the target minute, and occasionally an hour gets skipped entirely; there's no backfill. This is a known limitation of GitHub's free scheduled Actions, not a misconfiguration here — and it's low-stakes for this bot specifically, since dedup is atomic at the database layer (`jobs.link UNIQUE`), so a late or skipped run only delays an alert, it never loses or duplicates one.
 - GitHub auto-disables scheduled workflows after 60 days with zero commits to the repo. An active job hunt keeps this alive naturally (matches get committed), but if it goes fully quiet for 60 days the schedule stops until a commit or manual re-enable.
 
 If the repo is ever made **private**, note that Actions minutes stop being unlimited-free and start counting against the account's monthly quota (2,000 min/month on GitHub's Free plan) — check actual run duration in the Actions tab before switching visibility.
@@ -43,7 +43,7 @@ If the repo is ever made **private**, note that Actions minutes stop being unlim
 1. **Add repository secrets** (Settings → Secrets and variables → Actions → New repository secret) — same names as the `.env` variables (see [SOURCES.md](SOURCES.md)), added one at a time since there's no way to bulk-import from a script:
    - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` (required for alerts)
    - `ALERT_EMAIL_ADDRESS`, `ALERT_EMAIL_APP_PASSWORD` (if using LinkedIn/Naukri email alerts)
-   - Optionally: `ALERT_EMAIL_IMAP_HOST`, `ALERT_EMAIL_IMAP_PORT`, `LINKEDIN_ALERT_SENDER`, `NAUKRI_ALERT_SENDER`, and any of the RSS/JSON feed URL overrides
+   - Optionally: `ALERT_EMAIL_IMAP_HOST`, `ALERT_EMAIL_IMAP_PORT`, `LINKEDIN_ALERT_SENDER`, `NAUKRI_ALERT_SENDER`, any of the RSS/JSON feed URL overrides, and `GREENHOUSE_BOARD_TOKENS`/`LEVER_COMPANY_SLUGS`/`ASHBY_BOARD_NAMES` (also needs `allow_direct_scraping` turned on — see [SOURCES.md](SOURCES.md))
 2. **Allow the workflow to push**: Settings → Actions → General → Workflow permissions → "Read and write permissions". Without this, the DB commit-back step fails (the ingestion itself still runs fine, but state won't persist between runs).
 3. **Enable/tune settings and keywords once**, either by editing `backend/job_alert.db` via a local run, or by running the local backend, changing things through the Flutter app or API, then committing the resulting `job_alert.db`.
 4. Trigger it once manually via the **Actions** tab → "Scheduled ingestion" → "Run workflow" to confirm it works before waiting for the first scheduled run.
@@ -52,8 +52,9 @@ If the repo is ever made **private**, note that Actions minutes stop being unlim
 
 Every run — success or failure, scheduled or manual — is recorded as a row in the `ingestion_runs` table, which lives in `job_alert.db` and gets committed back to the repo like everything else. Two ways to see it:
 
-- **`GET /ingestion/runs`** — query the persisted history (timestamps, counts, error message if it failed) from the API/Flutter app.
-- **GitHub Actions run summary** — each scheduled run also writes a short markdown summary (fetched/matched/new/delivered counts, or the error) directly to that run's page under the **Actions** tab, no DB query needed. Click into any past run → the "Summary" tab.
+- **`GET /ingestion/runs`** — query the persisted history (timestamps, counts, error message if it failed) from the API/Flutter app. This only holds the aggregate counts (`fetched_count`, `matched_count`, etc.), not a per-source breakdown.
+- **GitHub Actions run summary** — each scheduled run also writes a short markdown summary directly to that run's page under the **Actions** tab, no DB query needed. Click into any past run → the "Summary" tab. Beyond the aggregate fetched/matched/new/delivered counts, it includes a **per-source table** (fetched and matched count for every individual source that run) — this is the place to check when a source seems to be contributing nothing, before assuming it's broken.
+- **Application logs** — every source logs its own outcome at INFO level (`Source 'X': checked, fetched N candidate(s)`, or a WARNING/exception if it failed) via `SafeAdapterRegistry.fetch_all()`; the aggregate + per-source breakdown is logged again by `IngestionService.run()`. Visible in the raw step log for a scheduled run, or directly in the console for a local run.
 
 The commit-back step runs even when ingestion itself fails (`if: always()` in `ingest.yml`), so a failed run's history is pushed to the repo too, not just successful ones — and the workflow step itself still exits non-zero on failure, which is what drives GitHub's own "workflow run failed" email notification to repo watchers.
 
