@@ -30,10 +30,13 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements.txt
+          cache-dependency-path: backend/requirements-lock.txt
 
+      # Pinned exact versions, not the requirements.txt ranges -- this workflow
+      # runs unattended every hour with nobody watching it fail; see the header
+      # comment in requirements-lock.txt for why this differs from ci.yml.
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements-lock.txt
 
       - name: Run one ingestion pass
         env:
@@ -70,5 +73,12 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add job_alert.db
-          git diff --cached --quiet || git commit -m "chore: ingestion run $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: ingestion run $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"
+          # The `concurrency` group above serializes scheduled runs against each
+          # other, but a manual local push (per OPERATIONS.md's documented
+          # workflow) landing between this job's checkout and its push would
+          # otherwise make a plain `git push` fail outright and drop this run's
+          # DB update. Rebase onto whatever's on origin now before pushing.
+          git pull --rebase origin "${GITHUB_REF_NAME}"
           git push

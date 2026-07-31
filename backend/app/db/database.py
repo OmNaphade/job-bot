@@ -1,5 +1,6 @@
 import sqlite3
 from contextlib import contextmanager
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterator
 
@@ -20,10 +21,12 @@ def init_db() -> None:
                 location TEXT NOT NULL,
                 link TEXT NOT NULL UNIQUE,
                 source TEXT NOT NULL,
-                posted_at TEXT
+                posted_at TEXT,
+                notified_at TEXT
             )
             """
         )
+        _migrate_add_notified_at(connection)
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS preferences (
@@ -69,6 +72,26 @@ def init_db() -> None:
             VALUES (1, 0, 0, 0, 0, 4)
             """
         )
+
+
+def _migrate_add_notified_at(connection: sqlite3.Connection) -> None:
+    """Backfills `notified_at` for rows written before the column existed.
+
+    Without this, every job already in the table would look "pending" and
+    get re-sent to Telegram the next time the notification retry queue
+    (JobRepository.list_unnotified) runs -- a mass repeat of old alerts.
+    Stamping them as already-notified is safe: they were either already
+    delivered under the old fire-and-forget flow, or are old enough that
+    resurfacing them now would be noise, not a genuine catch-up.
+    """
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(jobs)").fetchall()}
+    if "notified_at" in columns:
+        return
+    connection.execute("ALTER TABLE jobs ADD COLUMN notified_at TEXT")
+    connection.execute(
+        "UPDATE jobs SET notified_at = ? WHERE notified_at IS NULL",
+        (datetime.now(timezone.utc).isoformat(),),
+    )
 
 
 @contextmanager

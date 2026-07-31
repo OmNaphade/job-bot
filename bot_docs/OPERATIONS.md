@@ -75,7 +75,7 @@ pip install -r requirements.txt
 pytest -q
 ```
 
-Covers `matcher_service`, `dedup_service`, `email_parsers` (against hand-built sample HTML), the RSS/RemoteOK adapters, and repository-level duplicate/conflict handling (`job_repository`, `preference_repository`, `ingestion_settings_repository`, `ingestion_run_repository`) against a temp SQLite DB.
+Covers `matcher_service` (including location-scoped keyword filters), `dedup_service`, `notification_service` (Telegram digest chunking and partial-failure delivery tracking), `scheduler` (interval wiring/reschedule), the API routes (`app/api/routes.py`, via FastAPI's `TestClient`), `safe_registry` (adapter construction from settings/env, including CSV-token and `allow_direct_scraping` gating), `email_parsers` (against hand-built sample HTML), the RSS/RemoteOK/ATS adapters, and repository-level duplicate/conflict handling (`job_repository`, `preference_repository`, `ingestion_settings_repository`, `ingestion_run_repository`) against a temp SQLite DB.
 
 Frontend:
 
@@ -89,5 +89,5 @@ flutter test
 
 Two separate workflows, deliberately not combined:
 
-- **`.github/workflows/ci.yml`** — runs on every push/PR to `main`. Backend job installs `requirements.txt`, byte-compiles the app (`python -m compileall`), runs `pytest -q`. Frontend job runs `flutter pub get`, `flutter analyze`, `flutter test`. Self-contained — no secrets, no live network calls required to pass. A red run means an actual regression. Commits made by the ingestion workflow include `[skip ci]` so a routine DB update doesn't re-trigger the whole test suite.
-- **`.github/workflows/ingest.yml`** — the scheduled cron runner described above. Needs the repository secrets and write permissions set up once (see "One-time setup").
+- **`.github/workflows/ci.yml`** — runs on every push/PR to `main`. Backend job installs `requirements.txt` (the version *ranges*, deliberately — a red run here is the earliest signal that a new release inside an allowed range broke something, and a human is watching this run), byte-compiles the app (`python -m compileall`), runs `pytest -q`. Frontend job runs `flutter pub get`, `flutter analyze`, `flutter test`. Self-contained — no secrets, no live network calls required to pass. Commits made by the ingestion workflow include `[skip ci]` so a routine DB update doesn't re-trigger the whole test suite.
+- **`.github/workflows/ingest.yml`** — the scheduled cron runner described above. Installs from `backend/requirements-lock.txt` (exact pinned versions, not ranges) instead — nobody is watching this run every hour, so it gets the known-good pinned set rather than whatever the ranges resolve to that day. Regenerate the lock file deliberately (see the header comment in `requirements-lock.txt`) after confirming the new versions pass `pytest -q`, not automatically. Needs the repository secrets and write permissions set up once (see "One-time setup").

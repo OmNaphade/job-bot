@@ -28,7 +28,7 @@ The application has three main layers:
   - `services/ingestion_service.py`: orchestrates one ingestion run — build the adapter registry from current settings, build the matcher from current keyword preferences, fetch, match, dedup, persist, notify, and record the outcome (success or failure) to `ingestion_runs`.
   - `services/matcher_service.py`: include/exclude keyword matching against title/company/location.
   - `services/dedup_service.py`: in-batch dedup (catches two adapters returning the same link in one run). Cross-run dedup is handled atomically at the DB layer via `jobs.link UNIQUE` + `INSERT OR IGNORE`.
-  - `services/notification_service.py`: sends a Telegram digest message for newly-persisted matches.
+  - `services/notification_service.py`: sends a Telegram digest for jobs pending delivery (`JobRepository.list_unnotified()` -- this run's new matches plus any left over from a run whose send failed partway through, bounded at 200 oldest-first per run so a multi-day outage doesn't try to flush an ever-growing backlog in one go), and returns the ids that were actually delivered. `IngestionService.run()` marks only those ids `notified_at` via `JobRepository.mark_notified()`, so a Telegram outage delays delivery rather than losing it -- persistence (which drives dedup) and delivery are decoupled.
   - `adapters/rss_adapter.py`: fetches and parses a configured RSS/Atom feed (most Tier A sources).
   - `adapters/remoteok_adapter.py`: fetches RemoteOK's JSON API (its RSS feed was discontinued) — a dedicated adapter since the payload isn't RSS/Atom.
   - `adapters/ats_adapters.py`: `GreenhouseAdapter`/`LeverAdapter`/`AshbyAdapter` — pull postings directly from a company's public ATS job-board API (Tier C, gated by `allow_direct_scraping`, not `enable_rss_sources`). One instance per configured board token, registered dynamically from the comma-separated `GREENHOUSE_BOARD_TOKENS`/`LEVER_COMPANY_SLUGS`/`ASHBY_BOARD_NAMES` env vars — see [SOURCES.md](SOURCES.md).
@@ -54,9 +54,9 @@ The application has three main layers:
 ### SQLite tables
 
 - `jobs`
-  - `id`, `title`, `company`, `location`, `link` (UNIQUE — the sole dedup key), `source`, `posted_at`
+  - `id`, `title`, `company`, `location`, `link` (UNIQUE — the sole dedup key), `source`, `posted_at`, `notified_at` (NULL until a Telegram digest containing this job succeeds; drives the delivery retry queue, see `notification_service.py` above — separate from dedup, which only cares about `link`). Jobs added manually via `POST /jobs` are stamped `notified_at` at creation so they don't get swept into the ingestion notification queue.
 - `preferences`
-  - `id`, `keyword`, `kind` (`include` or `exclude`), `location` (stored, not yet used in matching); `UNIQUE(keyword, kind)`
+  - `id`, `keyword`, `kind` (`include` or `exclude`), `location` (optional — scopes this keyword to only apply when the candidate's own `location` also matches it, e.g. exclude "manager" only for "New York"; `location=NULL` matches regardless, the common case); `UNIQUE(keyword, kind)`
 - `ingestion_settings`
   - Single row (`id = 1`): `enable_rss_sources`, `enable_linkedin_alerts`, `enable_naukri_alerts`, `allow_direct_scraping`, `poll_interval_hours`
 - `ingestion_runs`
@@ -67,15 +67,15 @@ There is no separate "seen jobs" table — `jobs.link` being `UNIQUE`, combined 
 ## Ingestion flow (one run)
 
 1. Load current `ingestion_settings` and build the adapter registry — each adapter is enabled/disabled per its own toggle + feed URL/credentials.
-2. Load current `preferences` (include/exclude keywords) and build the matcher.
+2. Load current `preferences` (include/exclude keyword filters, each optionally scoped to a `location`) and build the matcher.
 3. Fetch candidates from every enabled adapter (RSS/JSON sources + email-alert sources).
-4. Match each candidate against the include/exclude keyword lists (title/company/location).
+4. Match each candidate against the include/exclude keyword filters (whole-word match against title/company/location; a filter with a `location` set only applies when the candidate's location also matches it).
 5. In-batch dedup (two adapters returning the same link in one run).
-6. Persist: `INSERT OR IGNORE` per candidate — `jobs.link UNIQUE` silently drops anything already seen in a prior run.
-7. Send a Telegram digest for whatever was actually newly persisted.
+6. Persist: `INSERT OR IGNORE` per candidate — `jobs.link UNIQUE` silently drops anything already seen in a prior run. Newly-persisted jobs start with `notified_at = NULL`.
+7. Send a Telegram digest for every job still pending delivery (`notified_at IS NULL`) — this run's new matches plus any left over from a run whose send failed partway through — and mark only the ones actually delivered.
 8. Record the run outcome (counts, status, error if any) to `ingestion_runs`.
 
-Any adapter-level failure (bad feed URL, network error, missing credentials) is caught and logged inside that adapter — it contributes zero candidates and does not abort the run. Only an unexpected failure in matching/dedup/persistence/notification aborts the run, and even then the run is recorded as `failed` with the error message before the exception propagates.
+Any adapter-level failure (bad feed URL, network error, missing credentials) is caught and logged inside that adapter — it contributes zero candidates and does not abort the run. Only an unexpected failure in matching/dedup/persistence/notification aborts the run, and even then the run is recorded as `failed` with the error message before the exception propagates. Persistence (dedup) and notification delivery are independent: a Telegram outage delays a job's alert to a later run rather than losing it, since the job isn't marked `notified_at` until delivery actually succeeds.
 
 ### Per-source visibility
 
@@ -99,4 +99,3 @@ Any adapter-level failure (bad feed URL, network error, missing credentials) is 
 - The backend listens on `http://127.0.0.1:9000`; the frontend targets the same.
 - `POST /ingest` (also triggered by the Flutter "Check for new jobs now" button) is a manual on-demand run of the exact same pipeline the scheduler runs automatically — safe to call anytime, including while a scheduled run might be in flight, since dedup is atomic at the database layer.
 - `CORS` is wide open (`allow_origins=["*"]`) for local development; tighten before exposing this beyond `127.0.0.1`.
-- `preferences.location` is stored but not yet used in matching.

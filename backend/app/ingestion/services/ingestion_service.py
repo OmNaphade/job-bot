@@ -41,7 +41,13 @@ class IngestionService:
             new_candidates = [
                 candidate for candidate in deduped if self.repository.create_job_if_new(candidate) is not None
             ]
-            delivered = self.notifier.send(new_candidates)
+            # Includes this run's new matches plus anything left over from a run
+            # whose Telegram delivery failed partway through -- see
+            # JobRepository.list_unnotified.
+            pending_notifications = self.repository.list_unnotified()
+            delivered_ids = self.notifier.send(pending_notifications)
+            self.repository.mark_notified(delivered_ids)
+            delivered = len(delivered_ids)
         except Exception as exc:
             logger.exception("Ingestion run failed")
             self._record_run(started_at, status="failed", error_message=str(exc))

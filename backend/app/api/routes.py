@@ -108,6 +108,6 @@ def update_keywords(
 ) -> dict[str, list[str]]:
     config = service.replace_keywords(payload.include_keywords, payload.exclude_keywords)
     return {
-        "include_keywords": config.include_keywords,
-        "exclude_keywords": config.exclude_keywords,
+        "include_keywords": [f.keyword for f in config.include_keywords],
+        "exclude_keywords": [f.keyword for f in config.exclude_keywords],
     }

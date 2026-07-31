@@ -50,3 +50,48 @@ def test_list_jobs_returns_newest_first(tmp_db):
     jobs = repo.list_jobs()
 
     assert [job.link for job in jobs] == ["https://example.com/jobs/2", "https://example.com/jobs/1"]
+
+
+def test_create_job_marks_notified_at_so_it_skips_the_delivery_queue(tmp_db):
+    JobRepository().create_job(_job_payload())
+
+    assert JobRepository().list_unnotified() == []
+
+
+def test_create_job_if_new_leaves_notified_at_null_for_the_delivery_queue(tmp_db):
+    candidate = JobCandidate(title="Backend Engineer", company="Acme", location="Remote", link="https://example.com/jobs/2", source="rss")
+    JobRepository().create_job_if_new(candidate)
+
+    pending = JobRepository().list_unnotified()
+
+    assert [job.link for job in pending] == ["https://example.com/jobs/2"]
+
+
+def test_mark_notified_removes_jobs_from_the_unnotified_queue(tmp_db):
+    repo = JobRepository()
+    candidate = JobCandidate(title="Backend Engineer", company="Acme", location="Remote", link="https://example.com/jobs/2", source="rss")
+    created = repo.create_job_if_new(candidate)
+
+    repo.mark_notified([created.id])
+
+    assert repo.list_unnotified() == []
+
+
+def test_mark_notified_with_no_ids_does_not_raise(tmp_db):
+    JobRepository().mark_notified([])  # no-op, must not error
+
+
+def test_list_unnotified_is_bounded_and_returns_oldest_first(tmp_db):
+    repo = JobRepository()
+    for i in range(5):
+        repo.create_job_if_new(
+            JobCandidate(title="Backend Engineer", company="Acme", location="Remote", link=f"https://example.com/jobs/{i}", source="rss")
+        )
+
+    pending = repo.list_unnotified(limit=3)
+
+    assert [job.link for job in pending] == [
+        "https://example.com/jobs/0",
+        "https://example.com/jobs/1",
+        "https://example.com/jobs/2",
+    ]

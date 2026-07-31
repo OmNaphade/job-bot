@@ -134,7 +134,7 @@ The primary way to run this is **not** locally — `.github/workflows/ingest.yml
 ## Roadmap
 
 - [ ] Validate the LinkedIn/Naukri email parsers against a real alert email (written against known structure, untested live)
-- [ ] Use `preferences.location` in matching (currently stored but unused)
+- [x] Use `preferences.location` in matching — a keyword filter can now be scoped to a location (`POST /preferences` with both `keyword` and `location`); bulk `POST /ingest/keywords` still applies unscoped
 - [ ] Surface ingestion run history in the Flutter dashboard (`GET /ingestion/runs` already exists, just no UI for it yet)
 - [ ] Pull postings from public Telegram job-posting channels — needs a personal-account MTProto login (Telethon/Pyrogram), not just the bot API, plus a per-channel message parser; scoping, not started
 
