@@ -87,6 +87,7 @@ class SafeAdapterRegistry:
             EmailAdapter(
                 "linkedin_alerts",
                 sender=env_settings.linkedin_alert_sender,
+                mailboxes=["INBOX", env_settings.linkedin_alert_label],
                 parser=parse_linkedin_alert_email,
                 enabled=settings.enable_linkedin_alerts,
             )
@@ -95,8 +96,14 @@ class SafeAdapterRegistry:
             EmailAdapter(
                 "naukri_alerts",
                 sender=env_settings.naukri_alert_sender,
+                mailboxes=["INBOX", env_settings.naukri_alert_label],
                 parser=parse_naukri_alert_email,
                 enabled=settings.enable_naukri_alerts,
             )
         )
+        # Foundit-via-email is NOT registered -- inspected directly against a real
+        # alert email and its "Apply Now" links go through an authenticated redirect
+        # (foundit.in/rio/autoLogin/seeker/<token>), not a stable per-job URL, so
+        # there's nothing reliable to key off. FounditAdapter's direct API integration
+        # already covers Foundit without this problem -- see bot_docs/SOURCES.md.
         return registry

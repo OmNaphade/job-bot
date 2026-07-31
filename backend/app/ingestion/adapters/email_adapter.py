@@ -16,14 +16,33 @@ ParserFn = Callable[[str], List[JobCandidate]]
 class EmailAdapter(BaseAdapter):
     """Reads job postings out of provider alert emails via IMAP.
 
-    Never talks to LinkedIn/Naukri directly -- the user sets up the portal's own
-    saved-search email alerts, forwarded to this inbox, and we only parse those.
+    Never talks to LinkedIn/Naukri/Foundit directly -- the user sets up the
+    portal's own saved-search/job-match email alerts, and we only parse those.
+
+    Searches every mailbox in `mailboxes` (default just INBOX) for unread mail,
+    optionally filtered by `sender` (a Gmail IMAP FROM search is a substring
+    match, not exact). This is what lets it check both INBOX and a Gmail label
+    folder the user has a filter routing alerts into -- Gmail exposes labels as
+    IMAP mailboxes. A message that's both in INBOX and a label (label applied
+    without "skip the inbox") is naturally only processed once: Gmail shares
+    the \\Seen flag across all views of the same message, so marking it seen
+    while processing one mailbox makes it drop out of the UNSEEN search in the
+    other. A mailbox that doesn't exist yet (e.g. the label hasn't been
+    created) is skipped with a warning, not a hard failure.
     """
 
-    def __init__(self, source_name: str, sender: str, parser: ParserFn, enabled: bool = False) -> None:
+    def __init__(
+        self,
+        source_name: str,
+        parser: ParserFn,
+        sender: Optional[str] = None,
+        mailboxes: Optional[List[str]] = None,
+        enabled: bool = False,
+    ) -> None:
         self.source_name = source_name
         self.sender = sender
         self.parser = parser
+        self.mailboxes = mailboxes or ["INBOX"]
         self.enabled = enabled
 
     def fetch(self) -> List[JobCandidate]:
@@ -46,14 +65,8 @@ class EmailAdapter(BaseAdapter):
         candidates: List[JobCandidate] = []
         try:
             connection.login(settings.alert_email_address, settings.alert_email_app_password)
-            connection.select("INBOX")
-            status, message_numbers = connection.search(None, "UNSEEN", "FROM", f'"{self.sender}"')
-            if status != "OK":
-                logger.warning("IMAP search failed for source '%s': %s", self.source_name, status)
-                return []
-
-            for message_number in message_numbers[0].split():
-                candidates.extend(self._process_message(connection, message_number))
+            for mailbox in self.mailboxes:
+                candidates.extend(self._fetch_from_mailbox(connection, mailbox))
         except Exception:
             logger.exception("Failed while reading alert emails for source '%s'", self.source_name)
         finally:
@@ -62,6 +75,29 @@ class EmailAdapter(BaseAdapter):
             except Exception:
                 pass
 
+        return candidates
+
+    def _fetch_from_mailbox(self, connection: imaplib.IMAP4_SSL, mailbox: str) -> List[JobCandidate]:
+        status, _ = connection.select(f'"{mailbox}"')
+        if status != "OK":
+            logger.warning(
+                "Mailbox '%s' not found/selectable for source '%s' (does the Gmail label exist yet?); skipping.",
+                mailbox,
+                self.source_name,
+            )
+            return []
+
+        search_criteria = ["UNSEEN"]
+        if self.sender:
+            search_criteria += ["FROM", f'"{self.sender}"']
+        status, message_numbers = connection.search(None, *search_criteria)
+        if status != "OK":
+            logger.warning("IMAP search failed for source '%s' in mailbox '%s': %s", self.source_name, mailbox, status)
+            return []
+
+        candidates: List[JobCandidate] = []
+        for message_number in message_numbers[0].split():
+            candidates.extend(self._process_message(connection, message_number))
         return candidates
 
     def _process_message(self, connection: imaplib.IMAP4_SSL, message_number: bytes) -> List[JobCandidate]:

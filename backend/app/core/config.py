@@ -35,6 +35,13 @@ class Settings:
     )
     naukri_alert_sender: str = field(default_factory=lambda: _env("NAUKRI_ALERT_SENDER", "noreply@naukri.com"))
 
+    # Gmail label folders (exposed as IMAP mailboxes) searched *in addition to* INBOX
+    # for each email-alert source -- lets a Gmail filter route alerts into a label
+    # without needing "skip the inbox" to also be checked. Each defaults to the label
+    # name the project's own setup used; override if yours differ.
+    linkedin_alert_label: str = field(default_factory=lambda: _env("LINKEDIN_ALERT_LABEL", "Linkedin Alerts"))
+    naukri_alert_label: str = field(default_factory=lambda: _env("NAUKRI_ALERT_LABEL", "Naukri Alerts"))
+
     # Verified, publicly-published RSS feeds -- no scraping, no guessed endpoints.
     weworkremotely_feed_url: str | None = field(
         default_factory=lambda: _env(

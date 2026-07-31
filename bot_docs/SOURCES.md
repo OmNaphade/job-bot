@@ -18,7 +18,20 @@ Without these, ingestion still runs and stores matches — it just skips sending
 4. Set: `ALERT_EMAIL_ADDRESS`, `ALERT_EMAIL_APP_PASSWORD`, and optionally `ALERT_EMAIL_IMAP_HOST`/`ALERT_EMAIL_IMAP_PORT` if not using Gmail. `LINKEDIN_ALERT_SENDER`/`NAUKRI_ALERT_SENDER` default to the standard alert sender addresses — override only if yours differ.
 5. Enable `enable_linkedin_alerts`/`enable_naukri_alerts` via `PUT /ingestion/settings` or the Flutter settings screen.
 
-**Note:** the HTML parsing in `email_parsers.py` was written against the well-known structure of these alert emails but hasn't been validated against a live sample. If postings are missed once real alerts arrive, that's a small, isolated fix in that one file — not a sign anything else is broken.
+**LinkedIn's parser is validated against a real alert email** (not just the well-known structure) — `parse_linkedin_alert_email` extracts by fixed line position within each job's anchor (title is always line 0, "Company · Location" is always line 1, using the real middle-dot separator U+00B7), dedupes by job ID extracted from the URL rather than the raw href (real hrefs carry per-email tracking query strings that would otherwise defeat `jobs.link UNIQUE` dedup across separate digest emails for the same job), and builds a clean canonical `linkedin.com/jobs/view/<id>/` link.
+
+**Naukri's parser is still unvalidated** — every message actually checked in a real "Naukri Alerts" label was marketing/newsletter content, not an actual job-match digest, so there was nothing real to calibrate the extraction against yet. If postings are missed once a genuine saved-search digest actually arrives (confirm you've set up the saved-search + email-alert step above, not just be subscribed to Naukri's newsletter), that's a small, isolated fix in `email_parsers.py`.
+
+### Optional: also search a Gmail label, not just INBOX
+
+If you have a Gmail filter routing these alert emails into a label, `EmailAdapter` can search both INBOX and that label's IMAP folder — a message that's in both (label applied without "skip the inbox") is naturally only processed once, since Gmail shares the `\Seen` flag across all views of the same message. A label that doesn't exist yet is skipped with a warning, not a hard failure.
+
+- `LINKEDIN_ALERT_LABEL` (default `Linkedin Alerts`), `NAUKRI_ALERT_LABEL` (default `Naukri Alerts`) — override if your label names differ.
+- **Gmail only exposes a label over IMAP if it's turned on per-label** — Gmail Settings → **Labels** tab → check "Show in IMAP" for each one, otherwise `EmailAdapter` will log a "mailbox not found" warning and just fall back to INBOX. Use `imaplib`'s `LIST` command (or check with a script) if you're not sure what your account actually exposes — Gmail label names don't always match what you'd guess (e.g. Title Case with spaces, not the lowercase-with-hyphens form you might type when creating the filter).
+
+### Foundit via email — not implemented
+
+Foundit alert emails were inspected directly, and their "Apply Now" links go through an authenticated redirect (`foundit.in/rio/autoLogin/seeker/<token>`), not a stable per-job URL — so there's no reliable link to key extraction off inside the email body, unlike LinkedIn/Naukri. This would need a different strategy entirely (e.g. pulling title/company text near each "Apply Now" button instead of the URL). Given `FounditAdapter`'s direct API integration (above) already covers Foundit without this problem, this channel isn't implemented.
 
 ## RSS/JSON sources (Tier A)
 
@@ -126,6 +139,8 @@ Copy `backend/.env.example` to `backend/.env` and fill in real values — it's l
 | `ALERT_EMAIL_IMAP_PORT` | IMAP port | `993` |
 | `LINKEDIN_ALERT_SENDER` | Sender address to filter LinkedIn alert emails | `jobalerts-noreply@linkedin.com` |
 | `NAUKRI_ALERT_SENDER` | Sender address to filter Naukri alert emails | `noreply@naukri.com` |
+| `LINKEDIN_ALERT_LABEL` | Gmail label (IMAP mailbox) also searched alongside INBOX for LinkedIn alerts | `Linkedin Alerts` |
+| `NAUKRI_ALERT_LABEL` | Gmail label (IMAP mailbox) also searched alongside INBOX for Naukri alerts | `Naukri Alerts` |
 | `WEWORKREMOTELY_FEED_URL` | RSS feed URL | `weworkremotely.com/categories/remote-programming-jobs.rss` |
 | `HIMALAYAS_FEED_URL` | RSS feed URL | `himalayas.app/jobs/rss` |
 | `REMOTIVE_FEED_URL` | RSS feed URL | `remotive.com/remote-jobs/feed` |
