@@ -45,6 +45,7 @@ It runs unattended via a scheduled GitHub Actions workflow (hourly), so it doesn
 - Polls 6 verified RSS/JSON remote-job feeds (WeWorkRemotely, Himalayas, Remotive, NoDesk, Jobspresso, RemoteOK) with no scraping involved
 - LinkedIn/Naukri support via your own saved-search email alerts (IMAP), never talks to linkedin.com/naukri.com directly
 - Optional direct-from-company-site sources — pulls postings straight from a company's own Greenhouse/Lever/Ashby job board API, per company you configure
+- Optional Foundit and Unstop integrations via their own internal (undocumented) APIs — opt-in and more fragile than the other sources, see `bot_docs/SOURCES.md` before enabling
 - Include/exclude keyword matching against title/company/location
 - Atomic cross-run dedup at the database layer — safe to trigger a manual check anytime, even mid-scheduled-run
 - Telegram digest notification the moment something new matches
@@ -132,7 +133,6 @@ The primary way to run this is **not** locally — `.github/workflows/ingest.yml
 
 ## Roadmap
 
-- [ ] Wire in Unstop/Foundit once a real JSON endpoint is found (both render listings client-side; needs manual DevTools discovery)
 - [ ] Validate the LinkedIn/Naukri email parsers against a real alert email (written against known structure, untested live)
 - [ ] Use `preferences.location` in matching (currently stored but unused)
 - [ ] Surface ingestion run history in the Flutter dashboard (`GET /ingestion/runs` already exists, just no UI for it yet)

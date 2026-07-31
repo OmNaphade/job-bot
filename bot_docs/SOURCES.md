@@ -33,13 +33,7 @@ Six real, verified, publicly-published feeds are wired in and work out of the bo
 
 All are legitimate feeds/APIs meant for exactly this kind of consumption — no scraping involved. Override the matching env var (`WEWORKREMOTELY_FEED_URL`, `HIMALAYAS_FEED_URL`, `REMOTIVE_FEED_URL`, `NODESK_FEED_URL`, `JOBSPRESSO_FEED_URL`, `REMOTEOK_API_URL`) if you want a different feed than the defaults.
 
-**Unstop and Foundit are not wired in** — both render job listings client-side (JavaScript after page load), so their real API endpoint can't be found with a plain HTTP fetch; it genuinely needs a browser's DevTools Network tab. If you want them:
-
-1. Open the portal, run a search matching your keywords.
-2. DevTools → Network → XHR/Fetch, search again, and look for the request returning job data as JSON. Also worth checking for a bare RSS link (`?format=rss`, footer link).
-3. Set `UNSTOP_FEED_URL` / `FOUNDIT_FEED_URL` to what you find.
-
-If a toggle is on but its URL/credentials are missing, that source just logs a warning and contributes nothing — it won't crash the run.
+Unstop and Foundit are both client-side-rendered with no public feed/RSS, but both *are* wired in — each via its own internal listing/search API rather than a documented one, see below.
 
 ## Direct-from-company-site sources (Tier C)
 
@@ -53,6 +47,39 @@ Greenhouse, Lever, and Ashby each publish a public per-company JSON API meant fo
 3. Turn on `allow_direct_scraping`.
 
 Not every company uses one of these three ATS platforms, and a guessed token that doesn't exist just 404s — logged as a warning, contributes zero candidates, doesn't break the run (same graceful-degradation pattern as every other adapter). A fully custom company careers page (not on a known ATS) has no public API to call and would need bespoke, more fragile HTML scraping — not implemented here.
+
+## Foundit and Unstop (reverse-engineered internal APIs — read this before enabling)
+
+Neither Foundit nor Unstop has a documented public feed or API. Both are instead queried via their own **internal** endpoints — the same ones each site's own search page calls client-side — found by inspecting live network traffic / testing endpoint shapes directly, not from any published documentation. Both return clean JSON with no login required.
+
+This is a different tier of trust from every other source in this file:
+- Greenhouse/Lever/Ashby and the RSS/JSON feeds are all officially published, documented-or-obviously-intended for exactly this kind of consumption.
+- These two are neither — undocumented, could change shape or disappear without notice, not guaranteed stable.
+
+Given that, both are gated by **`allow_direct_scraping`** (same toggle as the ATS adapters) rather than `enable_rss_sources`, and treated as opt-in/use-at-your-own-risk rather than sources you can rely on long-term. If either changes its endpoint or tightens bot-blocking further, the adapter will start failing quietly (logged as a warning, contributing zero candidates, same graceful-degradation pattern as everything else) rather than break the run — but don't be surprised if either needs revisiting down the line.
+
+**Risk assessment (read before enabling — not a legal opinion, just what was actually checked):**
+
+- **robots.txt** — checked directly for both. Foundit's disallows `/middleware/`, `/pwa/`, a handful of other paths, and does **not** list `/home/api/searchResultsPage`; the path this adapter calls isn't excluded. Unstop's robots.txt explicitly has `Allow: /api/public/*` (more specific than its later `Disallow: /api/*`), and the endpoint this adapter calls — `/api/public/opportunity/search-result` — falls directly under that explicit allow. Unstop's robots.txt also explicitly blocks known scraper/downloader tools (HTTrack, Wget, CCBot, etc.); this project doesn't use any of them or try to mirror the site.
+- **Terms of Service** — both sites' ToS pages are themselves client-side-rendered (same JS-shell issue as their job listings), so the actual legal text couldn't be read via a plain HTTP fetch — this was checked and hit the same wall. Nobody involved has read either site's full ToS. If you want certainty here, open both terms pages in a real browser and read the automated-access/scraping clauses yourself, or ask a lawyer — this repo can't give that assurance.
+- **Volume** — both adapters are called once per scheduled ingestion run (hourly by default, configurable), a single GET request per run per configured query. This is closer to a human doing one search than a scraper hammering an endpoint; there's no retry loop, no concurrency, no polling faster than the configured interval.
+- **Data touched** — only public job-posting metadata (title/company/location/link), the same fields a human browsing the search page would see, not scraped en masse or republished anywhere — it flows into your own private `jobs` table and a Telegram message to you.
+- **Foundit's bot-blocking specifically is a signal worth weighing** — it shows Foundit has *some* active anti-automation posture, even though the specific path we call isn't in their robots.txt disallow list. Robots.txt and WAF rules aren't necessarily written by the same team or kept in sync, so this is a real, if soft, signal that Foundit doesn't want undeclared automated traffic in general — not just conclusive proof this specific integration is unwelcome.
+
+None of this amounts to a legal guarantee — it's the concrete, checkable facts, not a substitute for reading the actual ToS or getting real legal advice if this matters to you. The lower-frequency, low-volume, personal-use nature of this bot meaningfully reduces (but doesn't eliminate) both ban risk and any hypothetical legal exposure.
+
+### Foundit
+
+`FounditAdapter` (`app/ingestion/adapters/foundit_adapter.py`) calls `https://www.foundit.in/home/api/searchResultsPage`. Its edge (Akamai) keyword-blocks any `User-Agent` whose first token contains the literal substring `bot` (verified directly — `job-alert-bot/1.0` gets `403`, `job-alert-ingestion-client/1.0` does not; `curl` and `requests`' own default UA both pass with no browser pretense at all — and a `job-bot` substring appearing later in the string, e.g. inside a URL, does *not* trigger it either). `FounditAdapter` therefore uses a different, still fully honest and self-identifying UA than the rest of the project's adapters — not a browser spoof, just avoiding one word that trips a naive filter. Like every adapter in this project, its UA also includes a `+https://github.com/OmNaphade/job-bot` link back to this repo, so anyone curious (or wanting to block it) can see exactly what's making the request and why — the same convention Googlebot's own UA uses.
+
+1. Set `FOUNDIT_SEARCH_QUERIES` — comma-separated broad search terms (e.g. `java,python,devops`). Each becomes its own adapter instance, sourced as `foundit:<query>` in the `jobs` table. The actual title/company/location filtering still happens afterwards via your normal include/exclude keywords, same as every other source — these just need to be broad enough to surface real candidates.
+2. Set `FOUNDIT_SEARCH_LOCATIONS` (e.g. `pune`) — required; if unset, no Foundit adapters are registered at all, regardless of `FOUNDIT_SEARCH_QUERIES` or the toggle.
+3. Optionally `FOUNDIT_SEARCH_COUNTRIES` (defaults to `India`).
+4. Turn on `allow_direct_scraping`.
+
+### Unstop
+
+`UnstopAdapter` (`app/ingestion/adapters/unstop_adapter.py`) calls `https://unstop.com/api/public/opportunity/search-result`. Unlike Foundit, no keyword-blocking was found on the User-Agent, and no query parameter was found that narrows results server-side either — it just fetches the latest ~50 open job postings in bulk (`oppstatus=open`) and relies on the normal include/exclude keyword matching afterwards, same as the RSS sources. No per-query configuration needed — just turn on `allow_direct_scraping` and it's active, sourced as `unstop` in the `jobs` table.
 
 ## Sources evaluated and NOT wired in
 
@@ -105,9 +132,13 @@ Copy `backend/.env.example` to `backend/.env` and fill in real values — it's l
 | `NODESK_FEED_URL` | RSS feed URL | `nodesk.co/remote-jobs/index.xml` |
 | `JOBSPRESSO_FEED_URL` | RSS feed URL | `jobspresso.co/feed/` |
 | `REMOTEOK_API_URL` | JSON API URL | `remoteok.com/api` |
-| `UNSTOP_FEED_URL` / `FOUNDIT_FEED_URL` | RSS/JSON feed URL, once you've found the real one | — |
 | `GREENHOUSE_BOARD_TOKENS` | Comma-separated Greenhouse board tokens (also needs `allow_direct_scraping` on) | — |
 | `LEVER_COMPANY_SLUGS` | Comma-separated Lever company slugs (also needs `allow_direct_scraping` on) | — |
 | `ASHBY_BOARD_NAMES` | Comma-separated Ashby board names (also needs `allow_direct_scraping` on) | — |
+| `FOUNDIT_SEARCH_QUERIES` | Comma-separated broad search terms (also needs `allow_direct_scraping` on and `FOUNDIT_SEARCH_LOCATIONS` set) | — |
+| `FOUNDIT_SEARCH_LOCATIONS` | Location passed to Foundit's search (required for any Foundit adapter to register) | — |
+| `FOUNDIT_SEARCH_COUNTRIES` | Country passed to Foundit's search | `India` |
+
+Unstop has no env var of its own — it's controlled entirely by the `allow_direct_scraping` toggle, no per-query configuration.
 
 None of these are secrets by nature except the Telegram token/chat id and the email address/app password — treat those four as sensitive; everything else is a public feed URL or sender address.

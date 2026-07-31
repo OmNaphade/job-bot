@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 # RemoteOK's public JSON API 403s requests sent with no User-Agent at all; a descriptive
 # UA identifies this as an automated client (as their API expects) -- it doesn't bypass a
 # login wall or render JS the way scraping would.
-_USER_AGENT = "job-alert-bot/1.0"
+_USER_AGENT = "job-alert-bot/1.0 (+https://github.com/OmNaphade/job-bot)"
 
 
 class RemoteOkAdapter(BaseAdapter):

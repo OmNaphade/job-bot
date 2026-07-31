@@ -22,7 +22,7 @@ from app.ingestion.models import JobCandidate
 
 logger = logging.getLogger(__name__)
 
-_USER_AGENT = "job-alert-bot/1.0"
+_USER_AGENT = "job-alert-bot/1.0 (+https://github.com/OmNaphade/job-bot)"
 _TIMEOUT_SECONDS = 10
 
 

@@ -56,6 +56,9 @@ jobs:
           GREENHOUSE_BOARD_TOKENS: ${{ secrets.GREENHOUSE_BOARD_TOKENS }}
           LEVER_COMPANY_SLUGS: ${{ secrets.LEVER_COMPANY_SLUGS }}
           ASHBY_BOARD_NAMES: ${{ secrets.ASHBY_BOARD_NAMES }}
+          FOUNDIT_SEARCH_QUERIES: ${{ secrets.FOUNDIT_SEARCH_QUERIES }}
+          FOUNDIT_SEARCH_LOCATIONS: ${{ secrets.FOUNDIT_SEARCH_LOCATIONS }}
+          FOUNDIT_SEARCH_COUNTRIES: ${{ secrets.FOUNDIT_SEARCH_COUNTRIES }}
         run: python -m scripts.run_ingestion_once
 
       # always() so a failed run's history (already recorded to job_alert.db by

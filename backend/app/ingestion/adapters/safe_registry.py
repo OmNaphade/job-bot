@@ -6,8 +6,10 @@ from app.ingestion.adapters.ats_adapters import AshbyAdapter, GreenhouseAdapter,
 from app.ingestion.adapters.base_adapter import BaseAdapter
 from app.ingestion.adapters.email_adapter import EmailAdapter
 from app.ingestion.adapters.email_parsers import parse_linkedin_alert_email, parse_naukri_alert_email
+from app.ingestion.adapters.foundit_adapter import FounditAdapter
 from app.ingestion.adapters.remoteok_adapter import RemoteOkAdapter
 from app.ingestion.adapters.rss_adapter import RssAdapter
+from app.ingestion.adapters.unstop_adapter import UnstopAdapter
 from app.ingestion.models import JobCandidate
 from app.models.ingestion_settings import IngestionSettings
 
@@ -58,20 +60,29 @@ class SafeAdapterRegistry:
             RssAdapter("weworkremotely", env_settings.weworkremotely_feed_url, enabled=settings.enable_rss_sources)
         )
         registry.register(RssAdapter("himalayas", env_settings.himalayas_feed_url, enabled=settings.enable_rss_sources))
-        registry.register(RssAdapter("unstop", env_settings.unstop_feed_url, enabled=settings.enable_rss_sources))
-        registry.register(RssAdapter("foundit", env_settings.foundit_feed_url, enabled=settings.enable_rss_sources))
         registry.register(RssAdapter("remotive", env_settings.remotive_feed_url, enabled=settings.enable_rss_sources))
         registry.register(RssAdapter("nodesk", env_settings.nodesk_feed_url, enabled=settings.enable_rss_sources))
         registry.register(
             RssAdapter("jobspresso", env_settings.jobspresso_feed_url, enabled=settings.enable_rss_sources)
         )
         registry.register(RemoteOkAdapter(env_settings.remoteok_api_url, enabled=settings.enable_rss_sources))
+        registry.register(UnstopAdapter(enabled=settings.allow_direct_scraping))
         for token in _split_csv(env_settings.greenhouse_board_tokens):
             registry.register(GreenhouseAdapter(token, enabled=settings.allow_direct_scraping))
         for slug in _split_csv(env_settings.lever_company_slugs):
             registry.register(LeverAdapter(slug, enabled=settings.allow_direct_scraping))
         for name in _split_csv(env_settings.ashby_board_names):
             registry.register(AshbyAdapter(name, enabled=settings.allow_direct_scraping))
+        if env_settings.foundit_search_locations:
+            for query in _split_csv(env_settings.foundit_search_queries):
+                registry.register(
+                    FounditAdapter(
+                        query,
+                        env_settings.foundit_search_locations,
+                        countries=env_settings.foundit_search_countries,
+                        enabled=settings.allow_direct_scraping,
+                    )
+                )
         registry.register(
             EmailAdapter(
                 "linkedin_alerts",

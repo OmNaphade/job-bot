@@ -57,11 +57,13 @@ class Settings:
     # their JSON API is the current, publicly-documented replacement.
     remoteok_api_url: str | None = field(default_factory=lambda: _env("REMOTEOK_API_URL", "https://remoteok.com/api"))
 
-    # Unstop/Foundit render job listings client-side (JS after page load) -- their real API
-    # endpoint isn't discoverable via a plain HTTP fetch and hasn't been guessed at here.
-    # Find it via the portal's search page (DevTools -> Network -> XHR) and set it below if you want it.
-    unstop_feed_url: str | None = field(default_factory=lambda: _env("UNSTOP_FEED_URL"))
-    foundit_feed_url: str | None = field(default_factory=lambda: _env("FOUNDIT_FEED_URL"))
+    # Unstop and Foundit both render job listings client-side (JS after page load) --
+    # neither has a public feed/API. Both are instead queried via their own internal
+    # endpoints (reverse-engineered, not documented; see SOURCES.md), gated by
+    # `allow_direct_scraping` like the ATS sources rather than `enable_rss_sources`.
+    foundit_search_queries: str | None = field(default_factory=lambda: _env("FOUNDIT_SEARCH_QUERIES"))
+    foundit_search_locations: str | None = field(default_factory=lambda: _env("FOUNDIT_SEARCH_LOCATIONS"))
+    foundit_search_countries: str = field(default_factory=lambda: _env("FOUNDIT_SEARCH_COUNTRIES", "India"))
 
     # Direct-from-company-site sources (gated by `allow_direct_scraping`, not
     # `enable_rss_sources`). Each is a comma-separated list of board tokens/slugs --

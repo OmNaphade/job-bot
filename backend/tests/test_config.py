@@ -37,10 +37,10 @@ def test_empty_string_env_var_falls_back_to_default(monkeypatch):
 
 
 def test_empty_string_env_var_is_treated_as_none_for_optional_fields(monkeypatch):
-    settings = _reload_settings_with_env(monkeypatch, TELEGRAM_BOT_TOKEN="", UNSTOP_FEED_URL="")
+    settings = _reload_settings_with_env(monkeypatch, TELEGRAM_BOT_TOKEN="", FOUNDIT_SEARCH_LOCATIONS="")
 
     assert settings.telegram_bot_token is None
-    assert settings.unstop_feed_url is None
+    assert settings.foundit_search_locations is None
 
 
 def test_real_value_still_wins_over_default(monkeypatch):
