@@ -10,7 +10,7 @@ class KeywordConfigScreen extends StatefulWidget {
 }
 
 class _KeywordConfigScreenState extends State<KeywordConfigScreen> {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService = ApiService.instance;
   final TextEditingController _includeController = TextEditingController();
   final TextEditingController _excludeController = TextEditingController();
 

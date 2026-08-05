@@ -11,7 +11,7 @@ class ConfigScreen extends StatefulWidget {
 }
 
 class _ConfigScreenState extends State<ConfigScreen> {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService = ApiService.instance;
 
   bool _loading = true;
   String? _error;

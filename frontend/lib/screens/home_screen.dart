@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:job_alert_frontend/screens/config_screen.dart';
 import 'package:job_alert_frontend/screens/keyword_config_screen.dart';
+import 'package:job_alert_frontend/screens/run_history_screen.dart';
+import 'package:job_alert_frontend/screens/server_settings_screen.dart';
 import 'package:job_alert_frontend/services/api_service.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -12,7 +15,7 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService = ApiService.instance;
   late Future<List<dynamic>> _jobsFuture;
   bool _runningIngestion = false;
 
@@ -31,6 +34,16 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Job Alerts'),
         actions: [
           IconButton(
+            tooltip: 'Server connection',
+            icon: const Icon(Icons.dns_rounded),
+            onPressed: () async {
+              final changed = await Navigator.of(context).push<bool>(
+                MaterialPageRoute(builder: (_) => const ServerSettingsScreen()),
+              );
+              if (changed == true) _reload();
+            },
+          ),
+          IconButton(
             tooltip: 'Ingestion settings',
             icon: const Icon(Icons.tune_rounded),
             onPressed: () => Navigator.of(context).push(
@@ -42,6 +55,13 @@ class _HomeScreenState extends State<HomeScreen> {
             icon: const Icon(Icons.filter_alt_outlined),
             onPressed: () => Navigator.of(context).push(
               MaterialPageRoute(builder: (_) => const KeywordConfigScreen()),
+            ),
+          ),
+          IconButton(
+            tooltip: 'Run history',
+            icon: const Icon(Icons.history_rounded),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const RunHistoryScreen()),
             ),
           ),
           const SizedBox(width: 8),
@@ -96,7 +116,16 @@ class _HomeScreenState extends State<HomeScreen> {
                     return const Center(child: CircularProgressIndicator());
                   }
                   if (snapshot.hasError) {
-                    return _ErrorState(error: snapshot.error.toString(), onRetry: _reload);
+                    return _ErrorState(
+                      error: snapshot.error.toString(),
+                      onRetry: _reload,
+                      onOpenServerSettings: () async {
+                        final changed = await Navigator.of(context).push<bool>(
+                          MaterialPageRoute(builder: (_) => const ServerSettingsScreen()),
+                        );
+                        if (changed == true) _reload();
+                      },
+                    );
                   }
                   final jobs = snapshot.data ?? [];
                   if (jobs.isEmpty) {
@@ -159,7 +188,8 @@ class _JobCard extends StatelessWidget {
     return Card(
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: link == null ? null : () => _copyLink(context, link),
+        onTap: link == null ? null : () => _openLink(context, link),
+        onLongPress: link == null ? null : () => _copyLink(context, link),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Row(
@@ -214,6 +244,15 @@ class _JobCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  Future<void> _openLink(BuildContext context, String link) async {
+    final uri = Uri.tryParse(link);
+    final opened = uri != null && await canLaunchUrl(uri) && await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!opened && context.mounted) {
+      Clipboard.setData(ClipboardData(text: link));
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text("Couldn't open the link — copied instead")));
+    }
   }
 
   void _copyLink(BuildContext context, String link) {
@@ -281,10 +320,11 @@ class _EmptyState extends StatelessWidget {
 }
 
 class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.error, required this.onRetry});
+  const _ErrorState({required this.error, required this.onRetry, required this.onOpenServerSettings});
 
   final String error;
   final VoidCallback onRetry;
+  final VoidCallback onOpenServerSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -301,7 +341,18 @@ class _ErrorState extends StatelessWidget {
             const SizedBox(height: 4),
             Text(error, textAlign: TextAlign.center, style: TextStyle(color: colorScheme.onSurfaceVariant, fontSize: 12)),
             const SizedBox(height: 16),
-            OutlinedButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                OutlinedButton.icon(onPressed: onRetry, icon: const Icon(Icons.refresh_rounded), label: const Text('Retry')),
+                const SizedBox(width: 12),
+                FilledButton.icon(
+                  onPressed: onOpenServerSettings,
+                  icon: const Icon(Icons.dns_rounded),
+                  label: const Text('Server URL'),
+                ),
+              ],
+            ),
           ],
         ),
       ),

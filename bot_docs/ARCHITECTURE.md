@@ -36,18 +36,24 @@ The application has three main layers:
   - `adapters/unstop_adapter.py`: `UnstopAdapter` — pulls from Unstop's own internal (undocumented) listing API. Also gated by `allow_direct_scraping`. No per-query configuration; fetches the latest open postings in bulk and relies on normal keyword matching, same as the RSS sources — see [SOURCES.md](SOURCES.md).
   - `adapters/email_adapter.py` + `adapters/email_parsers.py`: reads LinkedIn/Naukri job-alert emails via IMAP and parses postings out of the HTML body (Tier B — never talks to linkedin.com/naukri.com directly). `EmailAdapter` searches every mailbox in a configured list (INBOX plus, optionally, a Gmail label folder), not just INBOX — see [SOURCES.md](SOURCES.md). LinkedIn's parser is validated against a real alert email; Naukri's is still best-effort (no real job-digest sample has been available to check it against).
 - `backend/app/core/config.py`
-  - Static/secret configuration read from environment variables (Telegram token/chat id, IMAP credentials, alert sender addresses, feed URLs).
+  - Static/secret configuration read from environment variables (Telegram token/chat id, IMAP credentials, alert sender addresses, feed URLs, optional `API_KEY`).
+- `backend/app/core/security.py`
+  - `require_api_key`: opt-in auth dependency, a no-op unless `API_KEY` is set. Applied to every route except `/health` (see `routes.py`'s `protected` sub-router) — matters once the backend is bound to `0.0.0.0` for phone access rather than `127.0.0.1` only.
 - `backend/scripts/run_ingestion_once.py`
   - Short-lived entrypoint for a single ingestion pass — what the GitHub Actions scheduled workflow actually runs, as opposed to the long-running `main.py` + APScheduler used for local/always-on operation. Also writes a run summary to the GitHub Actions step summary when running in CI.
 
 ## Frontend
 
-- `frontend/lib/main.dart` — app entry point and Material 3 theme (light/dark).
-- `frontend/lib/screens/home_screen.dart` — dashboard showing stored jobs (source-colored cards, tap to copy the link) and an on-demand "Check for new jobs now" trigger.
+- `frontend/lib/main.dart` — app entry point; awaits `ApiService.instance.init()` (loads the persisted backend URL) before the first frame, then sets up the Material 3 theme (light/dark).
+- `frontend/lib/screens/home_screen.dart` — dashboard showing stored jobs (source-colored cards, tap to copy the link) and an on-demand "Check for new jobs now" trigger. The unreachable-backend error state links directly to Server Connection.
 - `frontend/lib/screens/config_screen.dart` — loads/saves real ingestion source toggles and poll interval against the backend.
 - `frontend/lib/screens/keyword_config_screen.dart` — loads current saved keywords and updates include/exclude filters.
-- `frontend/lib/services/api_service.dart` — the only place that talks HTTP to the backend.
+- `frontend/lib/screens/server_settings_screen.dart` — lets the user view/edit/test the backend base URL and, if the backend has `API_KEY` set, the matching key (needed on a real device, where `127.0.0.1` means the phone itself, not the PC running the backend — see [OPERATIONS.md](OPERATIONS.md#running-on-a-phone-androidios)).
+- `frontend/lib/screens/run_history_screen.dart` — recent ingestion runs (status, timestamps, fetched/matched/new/delivered counts, error message on failure), backed by `GET /ingestion/runs`.
+- `frontend/lib/services/api_service.dart` — the only place that talks HTTP to the backend; a singleton (`ApiService.instance`) so every screen shares one live base URL and API key, with per-request timeouts. Every request carries `X-API-Key` when one is configured.
+- `frontend/lib/services/server_config.dart` — resolves the platform-appropriate default backend URL and persists the user's URL/API-key overrides via `shared_preferences`.
 - `frontend/lib/widgets/section_label.dart` — shared small section-header widget.
+- `frontend/android/`, `frontend/ios/` — native platform scaffolding (added for mobile support). Android allows cleartext (plain HTTP) traffic and declares the `INTERNET` permission; iOS scopes `NSAllowsLocalNetworking` in `Info.plist` — both needed since the backend has no TLS and is only reachable on the local network.
 
 ## Data model and schema
 
@@ -82,6 +88,8 @@ Any adapter-level failure (bad feed URL, network error, missing credentials) is 
 `SafeAdapterRegistry.fetch_all()` logs one INFO line per source (`Source 'X': checked, fetched N candidate(s)`, or `disabled, skipped`) plus a summary line with every source's count. `IngestionService.run()` additionally computes a matched-count-per-source breakdown and logs both breakdowns together, and returns them in its result dict as `fetched_by_source` / `matched_by_source` (in addition to the existing aggregate `fetched`/`matched`/`new`/`delivered`). `scripts/run_ingestion_once.py` renders that breakdown as a per-source table in the GitHub Actions step summary, so you can see exactly which sources returned how much without reading raw logs — see [OPERATIONS.md](OPERATIONS.md#run-history--logs).
 
 ## API reference
+
+Every endpoint below except `/health` requires header `X-API-Key: <value>` when `API_KEY` is set in the backend's environment (unset by default — see [OPERATIONS.md](OPERATIONS.md#running-on-a-phone-androidios)).
 
 - `GET /health` → `{"status": "ok"}`
 - `GET /jobs` / `POST /jobs` (409 on duplicate `link`)

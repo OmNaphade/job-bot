@@ -51,7 +51,7 @@ It runs unattended via a scheduled GitHub Actions workflow (hourly), so it doesn
 - Telegram digest notification the moment something new matches
 - Runs hourly on GitHub's infrastructure — no server or always-on machine required
 - Every ingestion run (success or failure) is recorded with timestamps and aggregate counts; a per-source fetched/matched breakdown is logged and written to the GitHub Actions run summary for every run
-- Flutter dashboard for stored jobs, on-demand checks, and source/keyword configuration
+- Flutter dashboard for stored jobs, on-demand checks, and source/keyword configuration — runs on web, Windows, Android, and iOS, with an in-app, persisted backend-URL setting so a phone on the same Wi-Fi can reach a backend running on your PC (see [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios))
 
 ## Demo
 

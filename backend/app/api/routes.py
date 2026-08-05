@@ -2,6 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 
+from app.core.security import require_api_key
 from app.ingestion.scheduler import reschedule
 from app.ingestion.services.ingestion_service import IngestionService
 from app.models.ingestion_run import IngestionRun
@@ -15,6 +16,10 @@ from app.services.job_service import JobService
 from app.services.preference_service import PreferenceService
 
 router = APIRouter()
+# Everything except /health requires X-API-Key when API_KEY is configured
+# (see app/core/security.py) -- /health stays open so connectivity/liveness
+# checks work before a client has a key configured.
+protected = APIRouter(dependencies=[Depends(require_api_key)])
 
 
 def get_job_service() -> JobService:
@@ -42,12 +47,12 @@ def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/jobs", response_model=list[Job], tags=["jobs"])
+@protected.get("/jobs", response_model=list[Job], tags=["jobs"])
 def list_jobs(service: JobService = Depends(get_job_service)) -> list[Job]:
     return service.get_jobs()
 
 
-@router.post("/jobs", response_model=Job, tags=["jobs"])
+@protected.post("/jobs", response_model=Job, tags=["jobs"])
 def create_job(payload: JobCreate, service: JobService = Depends(get_job_service)) -> Job:
     try:
         return service.add_job(payload)
@@ -55,12 +60,12 @@ def create_job(payload: JobCreate, service: JobService = Depends(get_job_service
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.get("/preferences", response_model=list[Preference], tags=["preferences"])
+@protected.get("/preferences", response_model=list[Preference], tags=["preferences"])
 def list_preferences(service: PreferenceService = Depends(get_preference_service)) -> list[Preference]:
     return service.get_preferences()
 
 
-@router.post("/preferences", response_model=Preference, tags=["preferences"])
+@protected.post("/preferences", response_model=Preference, tags=["preferences"])
 def create_preference(
     payload: PreferenceCreate, service: PreferenceService = Depends(get_preference_service)
 ) -> Preference:
@@ -70,18 +75,18 @@ def create_preference(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
-@router.delete("/preferences/{preference_id}", tags=["preferences"])
+@protected.delete("/preferences/{preference_id}", tags=["preferences"])
 def delete_preference(preference_id: int, service: PreferenceService = Depends(get_preference_service)) -> dict[str, str]:
     service.remove_preference(preference_id)
     return {"status": "deleted"}
 
 
-@router.get("/ingestion/settings", response_model=IngestionSettings, tags=["ingestion"])
+@protected.get("/ingestion/settings", response_model=IngestionSettings, tags=["ingestion"])
 def get_ingestion_settings(service: IngestionSettingsService = Depends(get_ingestion_settings_service)) -> IngestionSettings:
     return service.get_settings()
 
 
-@router.put("/ingestion/settings", response_model=IngestionSettings, tags=["ingestion"])
+@protected.put("/ingestion/settings", response_model=IngestionSettings, tags=["ingestion"])
 def update_ingestion_settings(
     payload: IngestionSettings, service: IngestionSettingsService = Depends(get_ingestion_settings_service)
 ) -> IngestionSettings:
@@ -90,19 +95,19 @@ def update_ingestion_settings(
     return updated
 
 
-@router.post("/ingest", tags=["ingestion"])
+@protected.post("/ingest", tags=["ingestion"])
 def ingest_jobs(service: IngestionService = Depends(get_ingestion_service)) -> dict[str, Any]:
     return service.run()
 
 
-@router.get("/ingestion/runs", response_model=list[IngestionRun], tags=["ingestion"])
+@protected.get("/ingestion/runs", response_model=list[IngestionRun], tags=["ingestion"])
 def list_ingestion_runs(
     limit: int = 20, service: IngestionRunService = Depends(get_ingestion_run_service)
 ) -> list[IngestionRun]:
     return service.get_recent_runs(limit)
 
 
-@router.post("/ingest/keywords", tags=["ingestion"])
+@protected.post("/ingest/keywords", tags=["ingestion"])
 def update_keywords(
     payload: KeywordUpdate, service: PreferenceService = Depends(get_preference_service)
 ) -> dict[str, list[str]]:
@@ -111,3 +116,6 @@ def update_keywords(
         "include_keywords": [f.keyword for f in config.include_keywords],
         "exclude_keywords": [f.keyword for f in config.exclude_keywords],
     }
+
+
+router.include_router(protected)

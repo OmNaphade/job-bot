@@ -24,7 +24,23 @@ flutter pub get
 flutter run -d chrome    # or: flutter run -d windows
 ```
 
-The Flutter app always talks to `127.0.0.1:9000` — it only works while the backend above is running locally. It's a dashboard/config UI, not required for the bot itself to function (see below).
+It's a dashboard/config UI, not required for the bot itself to function (see below).
+
+By default the app targets `127.0.0.1:9000` (`10.0.2.2:9000` on the Android emulator, which is the emulator's alias for the host machine's loopback). This is overridden per-device from **Server Connection** (the 🖥 icon in the app bar, or offered directly from the "couldn't reach the backend" error screen) and persisted with `shared_preferences`, so it survives app restarts.
+
+#### Running on a phone (Android/iOS)
+
+`127.0.0.1` on a phone means the phone itself, not your PC — a real device needs your PC's actual LAN IP:
+
+1. Start the backend bound to all interfaces, not just loopback: `uvicorn main:app --host 0.0.0.0 --port 9000`.
+2. Find your PC's LAN IP: `ipconfig` on Windows (the IPv4 address, e.g. `192.168.1.42`) — phone and PC must be on the same Wi-Fi network.
+3. Allow inbound connections on port 9000 through Windows Firewall if prompted (or add a rule manually: Windows Defender Firewall → Advanced settings → Inbound Rules).
+4. Build/run the app on the device (`flutter run` with a device attached and USB debugging enabled, or `flutter build apk` and install the APK). Android platform support requires the Android SDK (Android Studio) to be installed; iOS builds require Xcode on macOS.
+5. In the app, open **Server Connection**, enter `http://192.168.1.42:9000` (your actual IP), tap **Test connection**, then **Save**. If the backend has `API_KEY` set (see below), enter the same value in the API Key field on that same screen — otherwise every request gets a 401.
+
+Two caveats specific to phones, already handled but worth knowing about: the backend is plain HTTP with no TLS, so Android (`usesCleartextTraffic`) and iOS (`NSAllowsLocalNetworking`) both need explicit opt-in to allow it — already configured in this project's manifests, scoped to local-network traffic rather than allowing arbitrary HTTP everywhere. This only works while your PC and the backend process are actually running and reachable — it does not replace the GitHub Actions scheduled runner as the always-on path (see below); it's for checking the dashboard and tweaking settings from your phone while your PC happens to be up.
+
+Binding to `0.0.0.0` means the API is reachable by anything on the same network, not just your phone, and there's no auth by default. Set `API_KEY` in `backend/.env` (see `.env.example`) to require an `X-API-Key` header on every endpoint except `/health`; enter the same value in the app's Server Connection screen. Unset (the default) keeps auth off, matching the original `127.0.0.1`-only behavior.
 
 ## Deploying: GitHub Actions as the always-on runner
 

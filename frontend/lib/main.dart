@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:job_alert_frontend/screens/home_screen.dart';
+import 'package:job_alert_frontend/services/api_service.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await ApiService.instance.init();
   runApp(const JobAlertApp());
 }
 

@@ -25,6 +25,12 @@ class Settings:
     telegram_bot_token: str | None = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))
     telegram_chat_id: str | None = field(default_factory=lambda: _env("TELEGRAM_CHAT_ID"))
 
+    # Shared-secret header required on every endpoint except /health when set.
+    # Unset (the default) means auth is off -- fine for 127.0.0.1-only use, but
+    # once the backend is bound to 0.0.0.0 for phone access (see
+    # bot_docs/OPERATIONS.md), anything on the same network can otherwise reach it.
+    api_key: str | None = field(default_factory=lambda: _env("API_KEY"))
+
     alert_email_address: str | None = field(default_factory=lambda: _env("ALERT_EMAIL_ADDRESS"))
     alert_email_app_password: str | None = field(default_factory=lambda: _env("ALERT_EMAIL_APP_PASSWORD"))
     alert_email_imap_host: str = field(default_factory=lambda: _env("ALERT_EMAIL_IMAP_HOST", "imap.gmail.com"))
