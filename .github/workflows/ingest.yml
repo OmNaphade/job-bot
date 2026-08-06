@@ -70,8 +70,8 @@ jobs:
       - name: Commit updated database if it changed
         if: always()
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name "Om Naphade"
+          git config user.email "omnaphade0902@gmail.com"
           git add job_alert.db
           git diff --cached --quiet && exit 0
           git commit -m "chore: ingestion run $(date -u +'%Y-%m-%d %H:%M UTC') [skip ci]"

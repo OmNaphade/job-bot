@@ -92,6 +92,8 @@ Every other source (RSS feeds, LinkedIn/Naukri email alerts) has its own env var
 
 ## Usage
 
+### Backend
+
 ```bash
 uvicorn main:app --reload --host 127.0.0.1 --port 9000
 ```
@@ -102,6 +104,16 @@ The scheduler starts automatically with the app and polls on its own from then o
 curl http://127.0.0.1:9000/health
 curl -X POST http://127.0.0.1:9000/ingest
 ```
+
+### Frontend (optional dashboard)
+
+```bash
+cd frontend
+flutter pub get
+flutter run -d chrome    # or: flutter run -d windows
+```
+
+Points at `127.0.0.1:9000` by default; change it in-app via the 🖥 **Server Connection** screen if your backend runs elsewhere (e.g. on a phone reaching your PC over LAN). Full instructions, including running on a real Android/iOS device, in [frontend/README.md](frontend/README.md) and [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios).
 
 ## Project Structure
 
