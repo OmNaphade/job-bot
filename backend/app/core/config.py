@@ -40,6 +40,10 @@ class Settings:
         default_factory=lambda: _env("LINKEDIN_ALERT_SENDER", "jobalerts-noreply@linkedin.com")
     )
     naukri_alert_sender: str = field(default_factory=lambda: _env("NAUKRI_ALERT_SENDER", "noreply@naukri.com"))
+    # Indeed's job-alert sender: was alert@indeed.com historically, now sends from
+    # this jobalert.indeed.com subdomain -- matching on the domain rather than the
+    # full address is more resilient if the subdomain prefix changes again.
+    indeed_alert_sender: str = field(default_factory=lambda: _env("INDEED_ALERT_SENDER", "jobalert.indeed.com"))
 
     # Gmail label folders (exposed as IMAP mailboxes) searched *in addition to* INBOX
     # for each email-alert source -- lets a Gmail filter route alerts into a label
@@ -47,6 +51,7 @@ class Settings:
     # name the project's own setup used; override if yours differ.
     linkedin_alert_label: str = field(default_factory=lambda: _env("LINKEDIN_ALERT_LABEL", "Linkedin Alerts"))
     naukri_alert_label: str = field(default_factory=lambda: _env("NAUKRI_ALERT_LABEL", "Naukri Alerts"))
+    indeed_alert_label: str = field(default_factory=lambda: _env("INDEED_ALERT_LABEL", "Indeed Alerts"))
 
     # Verified, publicly-published RSS feeds -- no scraping, no guessed endpoints.
     weworkremotely_feed_url: str | None = field(
@@ -88,8 +93,8 @@ class Settings:
 
     # Evaluated and confirmed to have NO public RSS/JSON feed (login-gated, JS-rendered,
     # paywalled, or discontinued) -- see bot_docs/SOURCES.md for detail per source:
-    # Naukri, LinkedIn (both handled instead via email alerts, see below),
-    # Fiverr, Upwork (RSS discontinued, 410 Gone), Indeed (RSS discontinued),
+    # Naukri, LinkedIn, Indeed (RSS discontinued; all three handled instead via
+    # email alerts, see below), Fiverr, Upwork (RSS discontinued, 410 Gone),
     # Remote Rocketship (Cloudflare-blocked), Eztrackr (an application tracker, not a job
     # board), Toptal, Skip The Drive, FlexJobs, Remote.co, AngelList/Wellfound, Freelancer,
     # Working Nomads (JS-rendered), SimplyHired, Stack Overflow Jobs (shut down 2022),

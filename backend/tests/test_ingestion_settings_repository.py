@@ -14,6 +14,7 @@ def test_update_persists_and_round_trips(tmp_db):
         enable_rss_sources=True,
         enable_linkedin_alerts=True,
         enable_naukri_alerts=False,
+        enable_indeed_alerts=True,
         allow_direct_scraping=False,
         poll_interval_hours=6,
     )

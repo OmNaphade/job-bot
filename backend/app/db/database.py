@@ -50,6 +50,17 @@ def init_db() -> None:
             )
             """
         )
+        _migrate_add_enable_indeed_alerts(connection)
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS processed_alert_emails (
+                message_id TEXT NOT NULL,
+                source TEXT NOT NULL,
+                processed_at TEXT NOT NULL,
+                PRIMARY KEY (message_id, source)
+            )
+            """
+        )
         connection.execute(
             """
             CREATE TABLE IF NOT EXISTS ingestion_runs (
@@ -92,6 +103,13 @@ def _migrate_add_notified_at(connection: sqlite3.Connection) -> None:
         "UPDATE jobs SET notified_at = ? WHERE notified_at IS NULL",
         (datetime.now(timezone.utc).isoformat(),),
     )
+
+
+def _migrate_add_enable_indeed_alerts(connection: sqlite3.Connection) -> None:
+    columns = {row[1] for row in connection.execute("PRAGMA table_info(ingestion_settings)").fetchall()}
+    if "enable_indeed_alerts" in columns:
+        return
+    connection.execute("ALTER TABLE ingestion_settings ADD COLUMN enable_indeed_alerts INTEGER NOT NULL DEFAULT 0")
 
 
 @contextmanager

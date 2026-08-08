@@ -18,6 +18,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
   bool rssEnabled = false;
   bool linkedinEnabled = false;
   bool naukriEnabled = false;
+  bool indeedEnabled = false;
   bool directScrapingEnabled = false;
   int pollIntervalHours = 4;
 
@@ -35,6 +36,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
         rssEnabled = config.enableRssSources;
         linkedinEnabled = config.enableLinkedInAlerts;
         naukriEnabled = config.enableNaukriAlerts;
+        indeedEnabled = config.enableIndeedAlerts;
         directScrapingEnabled = config.allowDirectScraping;
         pollIntervalHours = config.pollIntervalHours;
         _loading = false;
@@ -90,6 +92,13 @@ class _ConfigScreenState extends State<ConfigScreen> {
                       ),
                       const Divider(height: 1),
                       SwitchListTile(
+                        title: const Text('Indeed alerts'),
+                        subtitle: const Text('Reads your job-alert emails — never scrapes Indeed.'),
+                        value: indeedEnabled,
+                        onChanged: (value) => setState(() => indeedEnabled = value),
+                      ),
+                      const Divider(height: 1),
+                      SwitchListTile(
                         title: const Text('Allow direct scraping'),
                         subtitle: const Text('Off by default to protect your accounts.'),
                         value: directScrapingEnabled,
@@ -142,6 +151,7 @@ class _ConfigScreenState extends State<ConfigScreen> {
       enableRssSources: rssEnabled,
       enableLinkedInAlerts: linkedinEnabled,
       enableNaukriAlerts: naukriEnabled,
+      enableIndeedAlerts: indeedEnabled,
       allowDirectScraping: directScrapingEnabled,
       pollIntervalHours: pollIntervalHours,
     );

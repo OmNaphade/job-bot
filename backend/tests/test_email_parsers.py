@@ -1,4 +1,8 @@
-from app.ingestion.adapters.email_parsers import parse_linkedin_alert_email, parse_naukri_alert_email
+from app.ingestion.adapters.email_parsers import (
+    parse_indeed_alert_email,
+    parse_linkedin_alert_email,
+    parse_naukri_alert_email,
+)
 
 # Mirrors the real structure found in a live LinkedIn job-alert-digest email: the
 # entire job card (title, "Company (middle dot) Location", then a trailing
@@ -23,6 +27,23 @@ NAUKRI_SAMPLE = """
   <span>Acme India</span>
   <span>Pune</span>
 </div>
+</body></html>
+"""
+
+# Mirrors the real structure found in a live Indeed job-alert-digest email: each
+# job is a <table class="width-100"> card containing a title anchor (href carries
+# a `jk=<job key>` tracking query param) followed by plain <p> company/location
+# text within the same card, plus trailing noise ("Easily apply", a posted-date
+# line) after them.
+INDEED_SAMPLE = """
+<html><body>
+<table class="width-100">
+  <tr><td><h2><a href="https://in.indeed.com/rc/clk/dl?jk=abc123def456&from=ja&tk=xyz">Backend Engineer</a></h2></td></tr>
+  <tr><td><p>Acme Corp</p></td></tr>
+  <tr><td><p>Remote</p></td></tr>
+  <tr><td><p>Easily apply</p></td></tr>
+  <tr><td><p>Posted 2 days ago</p></td></tr>
+</table>
 </body></html>
 """
 
@@ -102,3 +123,63 @@ def test_parse_deduplicates_repeated_job_id_across_multiple_anchors():
     """
     jobs = parse_linkedin_alert_email(html)
     assert len(jobs) == 1
+
+
+def test_parse_indeed_alert_email_extracts_title_company_location():
+    jobs = parse_indeed_alert_email(INDEED_SAMPLE)
+
+    assert len(jobs) == 1
+    assert jobs[0].title == "Backend Engineer"
+    assert jobs[0].company == "Acme Corp"
+    assert jobs[0].location == "Remote"
+    assert jobs[0].source == "indeed_alerts"
+
+
+def test_parse_indeed_alert_email_builds_clean_link_from_job_key():
+    # Real hrefs carry heavy per-email tracking query strings (tk/alid/bb/qd/rd)
+    # that would produce a different `link` for the same job across separate
+    # digest emails and break dedup (`jobs.link UNIQUE`) -- the `jk` job key is
+    # extracted and used to build a clean, stable permalink instead.
+    jobs = parse_indeed_alert_email(INDEED_SAMPLE)
+
+    assert jobs[0].link == "https://in.indeed.com/viewjob?jk=abc123def456"
+
+
+def test_parse_indeed_alert_email_ignores_unrelated_links():
+    html = '<html><body><a href="https://in.indeed.com/jobs?q=python">Search</a></body></html>'
+    assert parse_indeed_alert_email(html) == []
+
+
+def test_parse_indeed_alert_email_deduplicates_repeated_job_key():
+    html = """
+    <table class="width-100">
+      <tr><td><h2><a href="https://in.indeed.com/rc/clk/dl?jk=dup1&tk=a">Engineer A</a></h2></td></tr>
+      <tr><td><p>Acme Corp</p></td></tr>
+      <tr><td><p>Remote</p></td></tr>
+    </table>
+    <table class="width-100">
+      <tr><td><h2><a href="https://in.indeed.com/rc/clk/dl?jk=dup1&tk=b">Engineer A</a></h2></td></tr>
+      <tr><td><p>Acme Corp</p></td></tr>
+      <tr><td><p>Remote</p></td></tr>
+    </table>
+    """
+    jobs = parse_indeed_alert_email(html)
+    assert len(jobs) == 1
+
+
+def test_parse_indeed_alert_email_handles_multiple_cards():
+    html = """
+    <table class="width-100">
+      <tr><td><h2><a href="https://in.indeed.com/rc/clk/dl?jk=aaa111&tk=a">Engineer A</a></h2></td></tr>
+      <tr><td><p>Acme Corp</p></td></tr>
+      <tr><td><p>Remote</p></td></tr>
+    </table>
+    <table class="width-100">
+      <tr><td><h2><a href="https://in.indeed.com/rc/clk/dl?jk=bbb222&tk=b">Engineer B</a></h2></td></tr>
+      <tr><td><p>Other Corp</p></td></tr>
+      <tr><td><p>Bengaluru</p></td></tr>
+    </table>
+    """
+    jobs = parse_indeed_alert_email(html)
+    assert len(jobs) == 2
+    assert {job.title for job in jobs} == {"Engineer A", "Engineer B"}

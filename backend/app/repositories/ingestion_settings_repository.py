@@ -8,7 +8,7 @@ class IngestionSettingsRepository:
             row = connection.execute(
                 """
                 SELECT enable_rss_sources, enable_linkedin_alerts, enable_naukri_alerts,
-                       allow_direct_scraping, poll_interval_hours
+                       enable_indeed_alerts, allow_direct_scraping, poll_interval_hours
                 FROM ingestion_settings WHERE id = 1
                 """
             ).fetchone()
@@ -16,6 +16,7 @@ class IngestionSettingsRepository:
             enable_rss_sources=bool(row["enable_rss_sources"]),
             enable_linkedin_alerts=bool(row["enable_linkedin_alerts"]),
             enable_naukri_alerts=bool(row["enable_naukri_alerts"]),
+            enable_indeed_alerts=bool(row["enable_indeed_alerts"]),
             allow_direct_scraping=bool(row["allow_direct_scraping"]),
             poll_interval_hours=row["poll_interval_hours"],
         )
@@ -28,6 +29,7 @@ class IngestionSettingsRepository:
                 SET enable_rss_sources = ?,
                     enable_linkedin_alerts = ?,
                     enable_naukri_alerts = ?,
+                    enable_indeed_alerts = ?,
                     allow_direct_scraping = ?,
                     poll_interval_hours = ?
                 WHERE id = 1
@@ -36,6 +38,7 @@ class IngestionSettingsRepository:
                     int(settings.enable_rss_sources),
                     int(settings.enable_linkedin_alerts),
                     int(settings.enable_naukri_alerts),
+                    int(settings.enable_indeed_alerts),
                     int(settings.allow_direct_scraping),
                     settings.poll_interval_hours,
                 ),

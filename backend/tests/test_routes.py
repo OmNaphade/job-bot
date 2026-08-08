@@ -68,6 +68,7 @@ def test_get_and_update_ingestion_settings(client):
             "enable_rss_sources": True,
             "enable_linkedin_alerts": False,
             "enable_naukri_alerts": False,
+            "enable_indeed_alerts": False,
             "allow_direct_scraping": False,
             "poll_interval_hours": 2,
         },

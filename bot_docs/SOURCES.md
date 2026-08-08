@@ -10,24 +10,34 @@ Everything is disabled by default. Nothing runs against a live source until you 
 
 Without these, ingestion still runs and stores matches — it just skips sending (logged, not an error).
 
-## LinkedIn / Naukri via email alerts (Tier B — never scrapes)
+## LinkedIn / Naukri / Indeed via email alerts (Tier B — never scrapes)
 
-1. In your LinkedIn/Naukri account, create a saved job search matching what you want, and turn on email alerts for it.
+1. In your LinkedIn/Naukri/Indeed account, create a saved job search matching what you want, and turn on email alerts for it.
 2. Point those alerts at a dedicated inbox (a separate Gmail works well — don't reuse an inbox you don't want a bot reading).
 3. For Gmail, create an [App Password](https://myaccount.google.com/apppasswords) (regular password won't work over IMAP).
-4. Set: `ALERT_EMAIL_ADDRESS`, `ALERT_EMAIL_APP_PASSWORD`, and optionally `ALERT_EMAIL_IMAP_HOST`/`ALERT_EMAIL_IMAP_PORT` if not using Gmail. `LINKEDIN_ALERT_SENDER`/`NAUKRI_ALERT_SENDER` default to the standard alert sender addresses — override only if yours differ.
-5. Enable `enable_linkedin_alerts`/`enable_naukri_alerts` via `PUT /ingestion/settings` or the Flutter settings screen.
+4. Set: `ALERT_EMAIL_ADDRESS`, `ALERT_EMAIL_APP_PASSWORD`, and optionally `ALERT_EMAIL_IMAP_HOST`/`ALERT_EMAIL_IMAP_PORT` if not using Gmail. `LINKEDIN_ALERT_SENDER`/`NAUKRI_ALERT_SENDER`/`INDEED_ALERT_SENDER` default to the standard alert sender addresses — override only if yours differ.
+5. Enable `enable_linkedin_alerts`/`enable_naukri_alerts`/`enable_indeed_alerts` via `PUT /ingestion/settings` or the Flutter settings screen.
 
 **LinkedIn's parser is validated against a real alert email** (not just the well-known structure) — `parse_linkedin_alert_email` extracts by fixed line position within each job's anchor (title is always line 0, "Company · Location" is always line 1, using the real middle-dot separator U+00B7), dedupes by job ID extracted from the URL rather than the raw href (real hrefs carry per-email tracking query strings that would otherwise defeat `jobs.link UNIQUE` dedup across separate digest emails for the same job), and builds a clean canonical `linkedin.com/jobs/view/<id>/` link.
 
 **Naukri's parser is still unvalidated** — every message actually checked in a real "Naukri Alerts" label was marketing/newsletter content, not an actual job-match digest, so there was nothing real to calibrate the extraction against yet. If postings are missed once a genuine saved-search digest actually arrives (confirm you've set up the saved-search + email-alert step above, not just be subscribed to Naukri's newsletter), that's a small, isolated fix in `email_parsers.py`.
 
+**Indeed's parser is validated against a real alert email.** `parse_indeed_alert_email` finds each job's card (`<table class="width-100">`), extracts the title from the anchor whose href carries a `jk=<job key>` query param (Indeed's stable per-posting identifier), takes the following two plain-text lines as company/location, and builds a clean canonical `<host>/viewjob?jk=<key>` link — same tracking-query-string problem as LinkedIn, same fix. Indeed's alert sender changed at some point from `alert@indeed.com` to `donotreply@jobalert.indeed.com`; `INDEED_ALERT_SENDER` therefore matches on the `jobalert.indeed.com` domain rather than the exact address, so a future subdomain-prefix change doesn't silently break the filter again the same way.
+
+### Processed-message tracking doesn't depend on the mailbox's read state
+
+Earlier versions of `EmailAdapter` used IMAP's `UNSEEN` flag to decide what's new. That silently breaks if anything else marks a message as read before the adapter's next poll — most notably, a **Gmail filter with "Mark as read" checked** as one of its actions (a common combination with "Skip Inbox" + "Apply label"), but also just the user reading their own mail. If that happens, `UNSEEN` returns nothing on every future run even though real, matching alert emails keep arriving — the adapter looks "on" but silently contributes zero candidates forever, with nothing in the logs to flag it (an empty fetch is indistinguishable from "no new mail").
+
+`EmailAdapter` now searches with IMAP's `SINCE` filter (bounded to the last `LOOKBACK_DAYS` = 3 days, server-side so this stays cheap against a large mailbox) instead, and tracks which messages it has already turned into candidates by **Message-ID**, recorded in the `processed_alert_emails` table (`ProcessedAlertEmailRepository`) — a piece of state only this adapter ever writes, so it can't be affected by a Gmail filter, another mail client, or the user's own reading habits. It still marks messages `\Seen` afterward as a courtesy (so your inbox reflects what's been processed), but correctness no longer depends on that flag.
+
+**If you have a filter routing alerts to a label, check whether it also marks them as read** (Gmail Settings → Filters and Blocked Addresses → edit the filter) — not required anymore for correctness, but worth knowing since it's easy to enable by habit and makes your own manual inbox review less useful.
+
 ### Optional: also search a Gmail label, not just INBOX
 
-If you have a Gmail filter routing these alert emails into a label, `EmailAdapter` can search both INBOX and that label's IMAP folder — a message that's in both (label applied without "skip the inbox") is naturally only processed once, since Gmail shares the `\Seen` flag across all views of the same message. A label that doesn't exist yet is skipped with a warning, not a hard failure.
+If you have a Gmail filter routing these alert emails into a label, `EmailAdapter` can search both INBOX and that label's IMAP folder. A message that's in both (label applied without "skip the inbox") is naturally only processed once, since Message-ID is shared across every view of the same message. A label that doesn't exist yet is skipped with a warning, not a hard failure.
 
-- `LINKEDIN_ALERT_LABEL` (default `Linkedin Alerts`), `NAUKRI_ALERT_LABEL` (default `Naukri Alerts`) — override if your label names differ.
-- **Gmail only exposes a label over IMAP if it's turned on per-label** — Gmail Settings → **Labels** tab → check "Show in IMAP" for each one, otherwise `EmailAdapter` will log a "mailbox not found" warning and just fall back to INBOX. Use `imaplib`'s `LIST` command (or check with a script) if you're not sure what your account actually exposes — Gmail label names don't always match what you'd guess (e.g. Title Case with spaces, not the lowercase-with-hyphens form you might type when creating the filter).
+- `LINKEDIN_ALERT_LABEL` (default `Linkedin Alerts`), `NAUKRI_ALERT_LABEL` (default `Naukri Alerts`), `INDEED_ALERT_LABEL` (default `Indeed Alerts`) — override if your label names differ.
+- **Gmail only exposes a label over IMAP if it's turned on per-label** — Gmail Settings → **Labels** tab → check "Show in IMAP" for each one, otherwise `EmailAdapter` will log a "mailbox not found" warning and just fall back to INBOX. Use `imaplib`'s `LIST` command (or check with a script) if you're not sure what your account actually exposes — Gmail label names don't always match what you'd guess (e.g. Title Case with spaces, not the lowercase-with-hyphens form you might type when creating the filter), and a label can also silently stop receiving mail if the sender's address changes and the filter's match rule doesn't follow — worth spot-checking with `IMAP LIST`/`SEARCH` occasionally rather than assuming a quiet label means no new mail exists at all.
 
 ### Foundit via email — not implemented
 
@@ -102,9 +112,9 @@ The following were checked (live HTTP fetch, not guessed) and have no public RSS
 |---|---|
 | Naukri | No official feed (handled instead via email alerts — see above) |
 | LinkedIn | No public feed (handled instead via email alerts — see above) |
+| Indeed | RSS discontinued (`404`) as an aggregator feed (handled instead via email alerts — see above) |
 | Fiverr | Gig marketplace, not a job-postings board |
 | Upwork | RSS saved-search feed discontinued (`410 Gone`) |
-| Indeed | RSS discontinued (`404`) |
 | Remote Rocketship | Blocked by Cloudflare bot-challenge on plain GET |
 | Eztrackr | It's an application-tracker tool/extension, not a job board — no listings to feed |
 | Toptal | Application-gated freelance platform, no public feed |
@@ -139,8 +149,10 @@ Copy `backend/.env.example` to `backend/.env` and fill in real values — it's l
 | `ALERT_EMAIL_IMAP_PORT` | IMAP port | `993` |
 | `LINKEDIN_ALERT_SENDER` | Sender address to filter LinkedIn alert emails | `jobalerts-noreply@linkedin.com` |
 | `NAUKRI_ALERT_SENDER` | Sender address to filter Naukri alert emails | `noreply@naukri.com` |
+| `INDEED_ALERT_SENDER` | Sender (domain substring) to filter Indeed alert emails | `jobalert.indeed.com` |
 | `LINKEDIN_ALERT_LABEL` | Gmail label (IMAP mailbox) also searched alongside INBOX for LinkedIn alerts | `Linkedin Alerts` |
 | `NAUKRI_ALERT_LABEL` | Gmail label (IMAP mailbox) also searched alongside INBOX for Naukri alerts | `Naukri Alerts` |
+| `INDEED_ALERT_LABEL` | Gmail label (IMAP mailbox) also searched alongside INBOX for Indeed alerts | `Indeed Alerts` |
 | `WEWORKREMOTELY_FEED_URL` | RSS feed URL | `weworkremotely.com/categories/remote-programming-jobs.rss` |
 | `HIMALAYAS_FEED_URL` | RSS feed URL | `himalayas.app/jobs/rss` |
 | `REMOTIVE_FEED_URL` | RSS feed URL | `remotive.com/remote-jobs/feed` |

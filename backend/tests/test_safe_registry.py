@@ -40,6 +40,7 @@ def _settings(**overrides) -> IngestionSettings:
         enable_rss_sources=False,
         enable_linkedin_alerts=False,
         enable_naukri_alerts=False,
+        enable_indeed_alerts=False,
         allow_direct_scraping=False,
         poll_interval_hours=4,
     )
@@ -113,3 +114,11 @@ def test_build_from_settings_registers_email_alert_adapters_with_both_mailboxes(
     linkedin = next(a for a in registry.adapters if a.source_name == "linkedin_alerts")
     assert linkedin.enabled is True
     assert linkedin.mailboxes[0] == "INBOX"
+
+
+def test_build_from_settings_registers_indeed_email_adapter(monkeypatch):
+    registry = SafeAdapterRegistry.build_from_settings(_settings(enable_indeed_alerts=True))
+
+    indeed = next(a for a in registry.adapters if a.source_name == "indeed_alerts")
+    assert indeed.enabled is True
+    assert indeed.mailboxes[0] == "INBOX"

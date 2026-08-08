@@ -5,7 +5,11 @@ from app.core.config import settings as env_settings
 from app.ingestion.adapters.ats_adapters import AshbyAdapter, GreenhouseAdapter, LeverAdapter
 from app.ingestion.adapters.base_adapter import BaseAdapter
 from app.ingestion.adapters.email_adapter import EmailAdapter
-from app.ingestion.adapters.email_parsers import parse_linkedin_alert_email, parse_naukri_alert_email
+from app.ingestion.adapters.email_parsers import (
+    parse_indeed_alert_email,
+    parse_linkedin_alert_email,
+    parse_naukri_alert_email,
+)
 from app.ingestion.adapters.foundit_adapter import FounditAdapter
 from app.ingestion.adapters.remoteok_adapter import RemoteOkAdapter
 from app.ingestion.adapters.rss_adapter import RssAdapter
@@ -99,6 +103,15 @@ class SafeAdapterRegistry:
                 mailboxes=["INBOX", env_settings.naukri_alert_label],
                 parser=parse_naukri_alert_email,
                 enabled=settings.enable_naukri_alerts,
+            )
+        )
+        registry.register(
+            EmailAdapter(
+                "indeed_alerts",
+                sender=env_settings.indeed_alert_sender,
+                mailboxes=["INBOX", env_settings.indeed_alert_label],
+                parser=parse_indeed_alert_email,
+                enabled=settings.enable_indeed_alerts,
             )
         )
         # Foundit-via-email is NOT registered -- inspected directly against a real
