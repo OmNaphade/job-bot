@@ -2,6 +2,8 @@ import logging
 from typing import List
 
 from app.core.config import settings as env_settings
+from app.ingestion.adapters.adzuna_adapter import AdzunaAdapter
+from app.ingestion.adapters.arbeitnow_adapter import ArbeitnowAdapter
 from app.ingestion.adapters.ats_adapters import AshbyAdapter, GreenhouseAdapter, LeverAdapter
 from app.ingestion.adapters.base_adapter import BaseAdapter
 from app.ingestion.adapters.email_adapter import EmailAdapter
@@ -11,8 +13,10 @@ from app.ingestion.adapters.email_parsers import (
     parse_naukri_alert_email,
 )
 from app.ingestion.adapters.foundit_adapter import FounditAdapter
+from app.ingestion.adapters.jooble_adapter import JoobleAdapter
 from app.ingestion.adapters.remoteok_adapter import RemoteOkAdapter
 from app.ingestion.adapters.rss_adapter import RssAdapter
+from app.ingestion.adapters.themuse_adapter import TheMuseAdapter
 from app.ingestion.adapters.unstop_adapter import UnstopAdapter
 from app.ingestion.models import JobCandidate
 from app.models.ingestion_settings import IngestionSettings
@@ -58,7 +62,7 @@ class SafeAdapterRegistry:
         return all_candidates
 
     @classmethod
-    def build_from_settings(cls, settings: IngestionSettings) -> "SafeAdapterRegistry":
+    def build_from_settings(cls, user_id: int, settings: IngestionSettings) -> "SafeAdapterRegistry":
         registry = cls()
         registry.register(
             RssAdapter("weworkremotely", env_settings.weworkremotely_feed_url, enabled=settings.enable_rss_sources)
@@ -70,6 +74,32 @@ class SafeAdapterRegistry:
             RssAdapter("jobspresso", env_settings.jobspresso_feed_url, enabled=settings.enable_rss_sources)
         )
         registry.register(RemoteOkAdapter(env_settings.remoteok_api_url, enabled=settings.enable_rss_sources))
+        registry.register(ArbeitnowAdapter(enabled=settings.enable_rss_sources))
+        if env_settings.adzuna_app_id and env_settings.adzuna_app_key:
+            for query in _split_csv(env_settings.adzuna_search_queries):
+                registry.register(
+                    AdzunaAdapter(
+                        query,
+                        env_settings.adzuna_app_id,
+                        env_settings.adzuna_app_key,
+                        country=env_settings.adzuna_country,
+                        enabled=settings.enable_rss_sources,
+                    )
+                )
+        if env_settings.jooble_api_key:
+            for query in _split_csv(env_settings.jooble_search_queries):
+                registry.register(
+                    JoobleAdapter(
+                        query,
+                        env_settings.jooble_api_key,
+                        location=env_settings.jooble_location,
+                        enabled=settings.enable_rss_sources,
+                    )
+                )
+        for category in _split_csv(env_settings.themuse_categories):
+            registry.register(
+                TheMuseAdapter(category, api_key=env_settings.themuse_api_key, enabled=settings.enable_rss_sources)
+            )
         registry.register(UnstopAdapter(enabled=settings.allow_direct_scraping))
         for token in _split_csv(env_settings.greenhouse_board_tokens):
             registry.register(GreenhouseAdapter(token, enabled=settings.allow_direct_scraping))
@@ -89,6 +119,7 @@ class SafeAdapterRegistry:
                 )
         registry.register(
             EmailAdapter(
+                user_id,
                 "linkedin_alerts",
                 sender=env_settings.linkedin_alert_sender,
                 mailboxes=["INBOX", env_settings.linkedin_alert_label],
@@ -98,6 +129,7 @@ class SafeAdapterRegistry:
         )
         registry.register(
             EmailAdapter(
+                user_id,
                 "naukri_alerts",
                 sender=env_settings.naukri_alert_sender,
                 mailboxes=["INBOX", env_settings.naukri_alert_label],
@@ -107,6 +139,7 @@ class SafeAdapterRegistry:
         )
         registry.register(
             EmailAdapter(
+                user_id,
                 "indeed_alerts",
                 sender=env_settings.indeed_alert_sender,
                 mailboxes=["INBOX", env_settings.indeed_alert_label],

@@ -22,14 +22,15 @@ class Settings:
     app_name: str = "Job Alert API"
     db_path: str = "job_alert.db"
 
-    telegram_bot_token: str | None = field(default_factory=lambda: _env("TELEGRAM_BOT_TOKEN"))
-    telegram_chat_id: str | None = field(default_factory=lambda: _env("TELEGRAM_CHAT_ID"))
+    # Required on POST /auth/signup when set (unset = open signup). Every other
+    # route requires a real per-user session token instead (see
+    # app/core/security.py) -- this only gates account creation itself, since
+    # that route can't require a session token that doesn't exist yet. Stops a
+    # publicly-reachable deployment from letting anyone create an account.
+    signup_invite_code: str | None = field(default_factory=lambda: _env("SIGNUP_INVITE_CODE"))
 
-    # Shared-secret header required on every endpoint except /health when set.
-    # Unset (the default) means auth is off -- fine for 127.0.0.1-only use, but
-    # once the backend is bound to 0.0.0.0 for phone access (see
-    # bot_docs/OPERATIONS.md), anything on the same network can otherwise reach it.
-    api_key: str | None = field(default_factory=lambda: _env("API_KEY"))
+    # Session token lifetime (see app/core/security.py::create_session).
+    session_ttl_days: int = field(default_factory=lambda: int(_env("SESSION_TTL_DAYS", "30")))
 
     alert_email_address: str | None = field(default_factory=lambda: _env("ALERT_EMAIL_ADDRESS"))
     alert_email_app_password: str | None = field(default_factory=lambda: _env("ALERT_EMAIL_APP_PASSWORD"))
@@ -90,6 +91,26 @@ class Settings:
     greenhouse_board_tokens: str | None = field(default_factory=lambda: _env("GREENHOUSE_BOARD_TOKENS"))
     lever_company_slugs: str | None = field(default_factory=lambda: _env("LEVER_COMPANY_SLUGS"))
     ashby_board_names: str | None = field(default_factory=lambda: _env("ASHBY_BOARD_NAMES"))
+
+    # Tier A: documented, apiKey-based aggregator APIs -- gated by `enable_rss_sources`,
+    # same trust tier as the RSS/JSON feeds above (officially published, no scraping).
+    # Arbeitnow needs no key at all; the other three self-disable in the registry if
+    # their required key/query env vars are unset (same pattern as Foundit's location gate).
+    adzuna_app_id: str | None = field(default_factory=lambda: _env("ADZUNA_APP_ID"))
+    adzuna_app_key: str | None = field(default_factory=lambda: _env("ADZUNA_APP_KEY"))
+    adzuna_country: str = field(default_factory=lambda: _env("ADZUNA_COUNTRY", "in"))
+    adzuna_search_queries: str | None = field(default_factory=lambda: _env("ADZUNA_SEARCH_QUERIES"))
+
+    jooble_api_key: str | None = field(default_factory=lambda: _env("JOOBLE_API_KEY"))
+    jooble_search_queries: str | None = field(default_factory=lambda: _env("JOOBLE_SEARCH_QUERIES"))
+    jooble_location: str | None = field(default_factory=lambda: _env("JOOBLE_LOCATION"))
+
+    themuse_api_key: str | None = field(default_factory=lambda: _env("THEMUSE_API_KEY"))
+    themuse_categories: str | None = field(default_factory=lambda: _env("THEMUSE_CATEGORIES"))
+
+    # Notification channels (Telegram/Slack/Discord) are per-user, stored in the
+    # `notification_settings` table -- see app/models/notification_settings.py --
+    # not global env vars.
 
     # Evaluated and confirmed to have NO public RSS/JSON feed (login-gated, JS-rendered,
     # paywalled, or discontinued) -- see bot_docs/SOURCES.md for detail per source:

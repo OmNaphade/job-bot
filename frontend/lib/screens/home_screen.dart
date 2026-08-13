@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:job_alert_frontend/screens/config_screen.dart';
-import 'package:job_alert_frontend/screens/keyword_config_screen.dart';
-import 'package:job_alert_frontend/screens/run_history_screen.dart';
-import 'package:job_alert_frontend/screens/server_settings_screen.dart';
+import 'package:job_alert_frontend/screens/settings_hub_screen.dart';
 import 'package:job_alert_frontend/services/api_service.dart';
+import 'package:job_alert_frontend/theme/app_colors.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -34,35 +32,17 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Job Alerts'),
         actions: [
           IconButton(
-            tooltip: 'Server connection',
-            icon: const Icon(Icons.dns_rounded),
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
             onPressed: () async {
-              final changed = await Navigator.of(context).push<bool>(
-                MaterialPageRoute(builder: (_) => const ServerSettingsScreen()),
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsHubScreen()),
               );
-              if (changed == true) _reload();
+              // Settings screens (server URL, sources, keywords) can all
+              // change what the job list should show -- just reload rather
+              // than tracking which sub-screen actually changed something.
+              _reload();
             },
-          ),
-          IconButton(
-            tooltip: 'Ingestion settings',
-            icon: const Icon(Icons.tune_rounded),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const ConfigScreen()),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Keyword filters',
-            icon: const Icon(Icons.filter_alt_outlined),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const KeywordConfigScreen()),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Run history',
-            icon: const Icon(Icons.history_rounded),
-            onPressed: () => Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const RunHistoryScreen()),
-            ),
           ),
           const SizedBox(width: 8),
         ],
@@ -120,10 +100,10 @@ class _HomeScreenState extends State<HomeScreen> {
                       error: snapshot.error.toString(),
                       onRetry: _reload,
                       onOpenServerSettings: () async {
-                        final changed = await Navigator.of(context).push<bool>(
-                          MaterialPageRoute(builder: (_) => const ServerSettingsScreen()),
+                        await Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const SettingsHubScreen()),
                         );
-                        if (changed == true) _reload();
+                        _reload();
                       },
                     );
                   }
@@ -184,6 +164,7 @@ class _JobCard extends StatelessWidget {
     final company = (job['company'] as String?) ?? '-';
     final location = (job['location'] as String?) ?? '-';
     final link = job['link'] as String?;
+    final logoUrl = job['logo_url'] as String?;
 
     return Card(
       child: InkWell(
@@ -195,14 +176,7 @@ class _JobCard extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              CircleAvatar(
-                radius: 20,
-                backgroundColor: _sourceColor(source, colorScheme).withValues(alpha: 0.16),
-                child: Text(
-                  company.isNotEmpty ? company[0].toUpperCase() : '?',
-                  style: TextStyle(color: _sourceColor(source, colorScheme), fontWeight: FontWeight.w700),
-                ),
-              ),
+              _buildAvatar(logoUrl, company, source, colorScheme),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -246,6 +220,31 @@ class _JobCard extends StatelessWidget {
     );
   }
 
+  Widget _buildAvatar(String? logoUrl, String company, String source, ColorScheme colorScheme) {
+    final initialAvatar = CircleAvatar(
+      radius: 20,
+      backgroundColor: _sourceColor(source, colorScheme).withValues(alpha: 0.16),
+      child: Text(
+        company.isNotEmpty ? company[0].toUpperCase() : '?',
+        style: TextStyle(color: _sourceColor(source, colorScheme), fontWeight: FontWeight.w700),
+      ),
+    );
+    if (logoUrl == null || logoUrl.isEmpty) return initialAvatar;
+
+    // Falls back to the initial-letter avatar on a missing/broken image (e.g.
+    // Clearbit 404ing an unrecognized domain) rather than showing a broken
+    // image icon -- a missing logo is expected, not an error state.
+    return ClipOval(
+      child: Image.network(
+        logoUrl,
+        width: 40,
+        height: 40,
+        fit: BoxFit.cover,
+        errorBuilder: (context, error, stackTrace) => initialAvatar,
+      ),
+    );
+  }
+
   Future<void> _openLink(BuildContext context, String link) async {
     final uri = Uri.tryParse(link);
     final opened = uri != null && await canLaunchUrl(uri) && await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -260,32 +259,9 @@ class _JobCard extends StatelessWidget {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Link copied')));
   }
 
-  String _sourceLabel(String source) {
-    const labels = {
-      'weworkremotely': 'We Work Remotely',
-      'himalayas': 'Himalayas',
-      'unstop': 'Unstop',
-      'foundit': 'Foundit',
-      'linkedin_alerts': 'LinkedIn',
-      'naukri_alerts': 'Naukri',
-      'manual': 'Manual',
-      'sample': 'Sample',
-    };
-    return labels[source] ?? source;
-  }
+  String _sourceLabel(String source) => SourceColors.label(source);
 
-  Color _sourceColor(String source, ColorScheme colorScheme) {
-    const palette = {
-      'weworkremotely': Color(0xFF2563EB),
-      'himalayas': Color(0xFF0891B2),
-      'unstop': Color(0xFFEA580C),
-      'foundit': Color(0xFF9333EA),
-      'linkedin_alerts': Color(0xFF0A66C2),
-      'naukri_alerts': Color(0xFFDB2777),
-      'manual': Color(0xFF64748B),
-    };
-    return palette[source] ?? colorScheme.primary;
-  }
+  Color _sourceColor(String source, ColorScheme colorScheme) => SourceColors.of(source, colorScheme.primary);
 }
 
 class _EmptyState extends StatelessWidget {

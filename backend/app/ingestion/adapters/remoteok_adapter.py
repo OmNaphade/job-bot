@@ -54,6 +54,10 @@ class RemoteOkAdapter(BaseAdapter):
                     link=link,
                     source="remoteok",
                     posted_at=entry.get("date"),
+                    # RemoteOK returns a real logo image URL directly (verified
+                    # against a live response) -- no domain guessing needed, just
+                    # pass it through when present.
+                    logo_url=entry.get("company_logo") or None,
                 )
             )
         return candidates

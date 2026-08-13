@@ -44,6 +44,7 @@ class EmailAdapter(BaseAdapter):
 
     def __init__(
         self,
+        user_id: int,
         source_name: str,
         parser: ParserFn,
         sender: Optional[str] = None,
@@ -51,6 +52,7 @@ class EmailAdapter(BaseAdapter):
         enabled: bool = False,
         processed_repo: Optional[ProcessedAlertEmailRepository] = None,
     ) -> None:
+        self.user_id = user_id
         self.source_name = source_name
         self.sender = sender
         self.parser = parser
@@ -115,7 +117,9 @@ class EmailAdapter(BaseAdapter):
             if message_id:
                 message_id_by_number[message_number] = message_id
 
-        new_message_ids = self.processed_repo.filter_new(self.source_name, message_id_by_number.values())
+        new_message_ids = self.processed_repo.filter_new(
+            self.user_id, self.source_name, message_id_by_number.values()
+        )
 
         candidates: List[JobCandidate] = []
         newly_processed: List[str] = []
@@ -125,7 +129,7 @@ class EmailAdapter(BaseAdapter):
             candidates.extend(self._process_message(connection, message_number))
             newly_processed.append(message_id)
 
-        self.processed_repo.mark_processed(self.source_name, newly_processed)
+        self.processed_repo.mark_processed(self.user_id, self.source_name, newly_processed)
         return candidates
 
     def _fetch_message_id(self, connection: imaplib.IMAP4_SSL, message_number: bytes) -> Optional[str]:

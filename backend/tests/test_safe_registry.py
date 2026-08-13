@@ -59,7 +59,7 @@ def test_build_from_settings_registers_one_adapter_per_csv_token(monkeypatch):
     )
     monkeypatch.setattr(safe_registry_module, "env_settings", configured)
 
-    registry = SafeAdapterRegistry.build_from_settings(_settings(allow_direct_scraping=True))
+    registry = SafeAdapterRegistry.build_from_settings(1, _settings(allow_direct_scraping=True))
 
     greenhouse_sources = [a.source_name for a in registry.adapters if a.source_name.startswith("greenhouse:")]
     assert greenhouse_sources == ["greenhouse:stripe", "greenhouse:notion"]
@@ -73,7 +73,7 @@ def test_build_from_settings_skips_foundit_without_a_configured_location(monkeyp
     )
     monkeypatch.setattr(safe_registry_module, "env_settings", configured)
 
-    registry = SafeAdapterRegistry.build_from_settings(_settings(allow_direct_scraping=True))
+    registry = SafeAdapterRegistry.build_from_settings(1, _settings(allow_direct_scraping=True))
 
     assert not any("foundit" in a.source_name for a in registry.adapters)
 
@@ -86,7 +86,7 @@ def test_build_from_settings_registers_foundit_per_query_when_location_set(monke
     )
     monkeypatch.setattr(safe_registry_module, "env_settings", configured)
 
-    registry = SafeAdapterRegistry.build_from_settings(_settings(allow_direct_scraping=True))
+    registry = SafeAdapterRegistry.build_from_settings(1, _settings(allow_direct_scraping=True))
 
     foundit_sources = [a.source_name for a in registry.adapters if "foundit" in a.source_name.lower()]
     assert len(foundit_sources) == 2
@@ -97,7 +97,7 @@ def test_build_from_settings_gates_direct_scraping_sources_on_allow_direct_scrap
     monkeypatch.setattr(safe_registry_module, "env_settings", configured)
 
     registry = SafeAdapterRegistry.build_from_settings(
-        _settings(enable_rss_sources=True, allow_direct_scraping=False)
+        1, _settings(enable_rss_sources=True, allow_direct_scraping=False)
     )
 
     greenhouse = next(a for a in registry.adapters if a.source_name == "greenhouse:stripe")
@@ -109,7 +109,7 @@ def test_build_from_settings_gates_direct_scraping_sources_on_allow_direct_scrap
 
 
 def test_build_from_settings_registers_email_alert_adapters_with_both_mailboxes(monkeypatch):
-    registry = SafeAdapterRegistry.build_from_settings(_settings(enable_linkedin_alerts=True))
+    registry = SafeAdapterRegistry.build_from_settings(1, _settings(enable_linkedin_alerts=True))
 
     linkedin = next(a for a in registry.adapters if a.source_name == "linkedin_alerts")
     assert linkedin.enabled is True
@@ -117,7 +117,7 @@ def test_build_from_settings_registers_email_alert_adapters_with_both_mailboxes(
 
 
 def test_build_from_settings_registers_indeed_email_adapter(monkeypatch):
-    registry = SafeAdapterRegistry.build_from_settings(_settings(enable_indeed_alerts=True))
+    registry = SafeAdapterRegistry.build_from_settings(1, _settings(enable_indeed_alerts=True))
 
     indeed = next(a for a in registry.adapters if a.source_name == "indeed_alerts")
     assert indeed.enabled is True

@@ -2,13 +2,15 @@
 
 Everything is disabled by default. Nothing runs against a live source until you turn it on **and** provide the matching credentials/URL below. No secret values live in this repo or in this doc — only variable names, what they're for, and non-secret defaults. Real values go in `backend/.env` (gitignored) locally, or GitHub repository secrets for the scheduled runner.
 
-## Telegram alerts (required for notifications)
+## Telegram / Slack / Discord alerts (per-account, not env vars)
 
-1. Create a bot via [@BotFather](https://t.me/BotFather) → note the bot token.
-2. Message your bot once, then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` to read back your `chat_id`.
-3. Set `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` env vars before starting the backend.
+Notification channels are configured per account through the app (**Settings → Notifications**, or `PUT /notification-settings`) — not `backend/.env` variables. Each account only sees its own channels; there's nothing to set in `.env` for this. `NotificationService` sends the same digest to every channel a given account has configured, independently — Telegram, Slack, and Discord can all be on at once for one account, and one channel being down or unconfigured never blocks another. A job only stays pending for that account's next run to retry if *every* channel it has configured failed to deliver it.
 
-Without these, ingestion still runs and stores matches — it just skips sending (logged, not an error).
+1. **Telegram**: create a bot via [@BotFather](https://t.me/BotFather) → note the bot token. Message your bot once, then visit `https://api.telegram.org/bot<TOKEN>/getUpdates` to read back your `chat_id`. Enter both in the app.
+2. **Slack**: create an [Incoming Webhook](https://api.slack.com/messaging/webhooks) for the channel you want alerts in, then paste the generated URL into the app.
+3. **Discord**: in the target channel, Server Settings → Integrations → Webhooks → New Webhook, copy its URL, then paste it into the app.
+
+Discord caps messages at 2000 characters (lower than Telegram's 4000), so long digests are chunked separately per channel against each platform's own limit. Without at least one channel configured, ingestion still runs and stores matches for that account — it just skips sending (logged, not an error).
 
 ## LinkedIn / Naukri / Indeed via email alerts (Tier B — never scrapes)
 
@@ -57,6 +59,28 @@ Six real, verified, publicly-published feeds are wired in and work out of the bo
 All are legitimate feeds/APIs meant for exactly this kind of consumption — no scraping involved. Override the matching env var (`WEWORKREMOTELY_FEED_URL`, `HIMALAYAS_FEED_URL`, `REMOTIVE_FEED_URL`, `NODESK_FEED_URL`, `JOBSPRESSO_FEED_URL`, `REMOTEOK_API_URL`) if you want a different feed than the defaults.
 
 Unstop and Foundit are both client-side-rendered with no public feed/RSS, but both *are* wired in — each via its own internal listing/search API rather than a documented one, see below.
+
+## Tier A: keyed aggregator APIs
+
+Four more officially documented, publicly-published job APIs — same trust tier as the RSS/JSON feeds above (no scraping, no login wall), also gated by `enable_rss_sources`. Three need a free API key; one needs nothing at all.
+
+- **Arbeitnow** (`arbeitnow`) — fully public, **no key required**. `ArbeitnowAdapter` calls `https://arbeitnow.com/api/job-board-api` directly; registers automatically whenever `enable_rss_sources` is on, same as RemoteOK.
+- **Adzuna** (`adzuna:<query>`) — [developer.adzuna.com](https://developer.adzuna.com/overview), free tier (~250 calls/day). Set `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`, and `ADZUNA_SEARCH_QUERIES` (comma-separated, e.g. `python,devops`); one adapter per query. `ADZUNA_COUNTRY` defaults to `in`. Nothing registers until both credentials and at least one query are set.
+- **Jooble** (`jooble:<query>`) — [jooble.org/api/about](https://jooble.org/api/about), free key. Set `JOOBLE_API_KEY` and `JOOBLE_SEARCH_QUERIES` (comma-separated); one adapter per query. `JOOBLE_LOCATION` is optional. Nothing registers until the key and at least one query are set.
+- **The Muse** (`themuse:<category>`) — [themuse.com/developers](https://www.themuse.com/developers/api/v2), works unauthenticated at low volume. Set `THEMUSE_CATEGORIES` (comma-separated, e.g. `Software Engineering`); one adapter per category. `THEMUSE_API_KEY` is optional and only raises the rate limit.
+
+Each keyed adapter follows the same per-query pattern as `FounditAdapter` (one adapter instance = one query) and the same graceful-degradation pattern as every other source — a failed request or missing key/query logs a warning and contributes zero candidates, it doesn't break the run.
+
+## Company logo enrichment (Clearbit)
+
+Jobs may carry a `logo_url`, shown on the job card in the Flutter app, sourced via [Clearbit's free, unauthenticated logo API](https://clearbit.com/logo) (`logo.clearbit.com/<domain>` — no key, no signup). It's only populated where a source hands back a **verified** company domain, never guessed from a company display name or an ATS board token/slug (e.g. `notion` is not `notion.com`) — a wrong guess produces a wrong logo more often than a missing one produces no logo:
+
+- **RemoteOK** returns a real logo image URL directly in its JSON (`company_logo`) — passed straight through, no Clearbit lookup needed.
+- **Greenhouse** boards using a custom domain (e.g. `stripe.com/jobs/...` instead of the default `boards.greenhouse.io/stripe/...`) expose that domain in `absolute_url` — used as the Clearbit lookup key. Boards still on the default `boards.greenhouse.io` host are skipped (that's Greenhouse's own domain, not the company's).
+- **Lever and Ashby** always host on their own domain (`jobs.lever.co`, `jobs.ashbyhq.com`) regardless of the company, so no reliable domain is available from either — `logo_url` is left unset for those sources.
+- All other sources (Adzuna, Jooble, The Muse, Foundit, Unstop, the RSS feeds, the email-alert sources) don't expose a verified domain either, so `logo_url` is left unset there too.
+
+A missing `logo_url` is expected and normal, not a bug — the frontend falls back to an initial-letter avatar. Clearbit itself 404s gracefully for an unrecognized domain, which the frontend also treats as "no logo," not an error.
 
 ## Direct-from-company-site sources (Tier C)
 
@@ -141,8 +165,8 @@ Copy `backend/.env.example` to `backend/.env` and fill in real values — it's l
 
 | Variable | Purpose | Default |
 |---|---|---|
-| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather | — |
-| `TELEGRAM_CHAT_ID` | Your chat id to send alerts to | — |
+| `SIGNUP_INVITE_CODE` | Required on `POST /auth/signup` when set; gates who can create an account | — |
+| `SESSION_TTL_DAYS` | How long a login session lasts before needing to sign in again | `30` |
 | `ALERT_EMAIL_ADDRESS` | Inbox the bot reads alert emails from | — |
 | `ALERT_EMAIL_APP_PASSWORD` | IMAP app password for that inbox | — |
 | `ALERT_EMAIL_IMAP_HOST` | IMAP host | `imap.gmail.com` |
@@ -159,6 +183,15 @@ Copy `backend/.env.example` to `backend/.env` and fill in real values — it's l
 | `NODESK_FEED_URL` | RSS feed URL | `nodesk.co/remote-jobs/index.xml` |
 | `JOBSPRESSO_FEED_URL` | RSS feed URL | `jobspresso.co/feed/` |
 | `REMOTEOK_API_URL` | JSON API URL | `remoteok.com/api` |
+| `ADZUNA_APP_ID` | Adzuna app id (also needs `ADZUNA_APP_KEY` and `ADZUNA_SEARCH_QUERIES`) | — |
+| `ADZUNA_APP_KEY` | Adzuna app key | — |
+| `ADZUNA_COUNTRY` | Adzuna country code | `in` |
+| `ADZUNA_SEARCH_QUERIES` | Comma-separated search terms, one adapter per query | — |
+| `JOOBLE_API_KEY` | Jooble API key (also needs `JOOBLE_SEARCH_QUERIES`) | — |
+| `JOOBLE_SEARCH_QUERIES` | Comma-separated search terms, one adapter per query | — |
+| `JOOBLE_LOCATION` | Optional location filter passed to Jooble | — |
+| `THEMUSE_API_KEY` | Optional — raises The Muse's rate limit, not required to use it | — |
+| `THEMUSE_CATEGORIES` | Comma-separated job categories, one adapter per category | — |
 | `GREENHOUSE_BOARD_TOKENS` | Comma-separated Greenhouse board tokens (also needs `allow_direct_scraping` on) | — |
 | `LEVER_COMPANY_SLUGS` | Comma-separated Lever company slugs (also needs `allow_direct_scraping` on) | — |
 | `ASHBY_BOARD_NAMES` | Comma-separated Ashby board names (also needs `allow_direct_scraping` on) | — |
@@ -168,4 +201,4 @@ Copy `backend/.env.example` to `backend/.env` and fill in real values — it's l
 
 Unstop has no env var of its own — it's controlled entirely by the `allow_direct_scraping` toggle, no per-query configuration.
 
-None of these are secrets by nature except the Telegram token/chat id and the email address/app password — treat those four as sensitive; everything else is a public feed URL or sender address.
+None of these are secrets by nature except `SIGNUP_INVITE_CODE`, the email address/app password, and the Adzuna/Jooble/The Muse API keys — treat those as sensitive (anyone holding the invite code can create an account; anyone holding an API key can spend your quota); everything else is a public feed URL, sender address, or non-secret search parameter. Telegram/Slack/Discord credentials aren't env vars at all anymore — they're per-account, entered through the app (see "Telegram / Slack / Discord alerts" above).

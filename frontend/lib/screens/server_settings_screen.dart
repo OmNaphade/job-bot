@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:job_alert_frontend/services/api_service.dart';
 import 'package:job_alert_frontend/services/server_config.dart';
+import 'package:job_alert_frontend/theme/app_colors.dart';
 import 'package:job_alert_frontend/widgets/section_label.dart';
 
 class ServerSettingsScreen extends StatefulWidget {
@@ -13,29 +14,26 @@ class ServerSettingsScreen extends StatefulWidget {
 class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
   final ApiService _apiService = ApiService.instance;
   late final TextEditingController _urlController;
-  late final TextEditingController _apiKeyController;
 
   bool _testing = false;
   bool? _lastTestOk;
-  bool _obscureApiKey = true;
 
   @override
   void initState() {
     super.initState();
     _urlController = TextEditingController(text: _apiService.baseUrl);
-    _apiKeyController = TextEditingController(text: _apiService.apiKey ?? '');
   }
 
   @override
   void dispose() {
     _urlController.dispose();
-    _apiKeyController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final successColor = Theme.of(context).appStatusColors.success;
 
     return Scaffold(
       appBar: AppBar(title: const Text('Server Connection')),
@@ -57,25 +55,6 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
             "`uvicorn main:app --host 0.0.0.0 --port 9000` so it accepts connections from other devices. "
             "Your phone and PC must be on the same Wi-Fi network, and Windows Firewall may need to allow "
             "inbound connections on port 9000.",
-            style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 20),
-          const SectionLabel('API Key (optional)'),
-          TextField(
-            controller: _apiKeyController,
-            obscureText: _obscureApiKey,
-            decoration: InputDecoration(
-              hintText: 'Only needed if the backend has API_KEY set',
-              suffixIcon: IconButton(
-                icon: Icon(_obscureApiKey ? Icons.visibility_rounded : Icons.visibility_off_rounded),
-                onPressed: () => setState(() => _obscureApiKey = !_obscureApiKey),
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Leave blank unless you set API_KEY in the backend\'s .env — required once the backend '
-            'is reachable beyond 127.0.0.1, so anyone on the same network can\'t use it without this key.',
             style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 20),
@@ -110,14 +89,14 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
               children: [
                 Icon(
                   _lastTestOk! ? Icons.check_circle_rounded : Icons.error_rounded,
-                  color: _lastTestOk! ? Colors.green : colorScheme.error,
+                  color: _lastTestOk! ? successColor : colorScheme.error,
                   size: 18,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     _lastTestOk! ? 'Reached the backend successfully.' : "Couldn't reach the backend at this URL.",
-                    style: TextStyle(color: _lastTestOk! ? Colors.green : colorScheme.error),
+                    style: TextStyle(color: _lastTestOk! ? successColor : colorScheme.error),
                   ),
                 ),
               ],
@@ -143,7 +122,6 @@ class _ServerSettingsScreenState extends State<ServerSettingsScreen> {
 
   Future<void> _save() async {
     await _apiService.setBaseUrl(_urlController.text);
-    await _apiService.setApiKey(_apiKeyController.text);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Server connection saved')),

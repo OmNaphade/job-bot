@@ -33,14 +33,14 @@ class _FakeProcessedRepo:
 
     def __init__(self, already_processed=None):
         self.already_processed: set[str] = set(already_processed or [])
-        self.marked: list[tuple[str, str]] = []
+        self.marked: list[tuple[int, str, str]] = []
 
-    def filter_new(self, source, message_ids):
+    def filter_new(self, user_id, source, message_ids):
         return {message_id for message_id in message_ids if message_id not in self.already_processed}
 
-    def mark_processed(self, source, message_ids):
+    def mark_processed(self, user_id, source, message_ids):
         for message_id in message_ids:
-            self.marked.append((source, message_id))
+            self.marked.append((user_id, source, message_id))
             self.already_processed.add(message_id)
 
 
@@ -95,7 +95,7 @@ class _FakeImap:
 
 
 def test_fetch_returns_empty_when_disabled():
-    adapter = EmailAdapter("test_source", parser=_fake_parser, enabled=False)
+    adapter = EmailAdapter(1, "test_source", parser=_fake_parser, enabled=False)
     assert adapter.fetch() == []
 
 
@@ -107,6 +107,7 @@ def test_fetch_searches_inbox_and_label_mailbox(monkeypatch):
     monkeypatch.setattr("app.ingestion.adapters.email_adapter.settings", _CONFIGURED_SETTINGS)
 
     adapter = EmailAdapter(
+        1,
         "linkedin_alerts",
         parser=_fake_parser,
         sender="jobalerts-noreply@linkedin.com",
@@ -129,6 +130,7 @@ def test_fetch_skips_mailbox_that_does_not_exist(monkeypatch):
     monkeypatch.setattr("app.ingestion.adapters.email_adapter.settings", _CONFIGURED_SETTINGS)
 
     adapter = EmailAdapter(
+        1,
         "foundit_alerts",
         parser=_fake_parser,
         sender=None,
@@ -145,7 +147,7 @@ def test_fetch_skips_mailbox_that_does_not_exist(monkeypatch):
 def test_fetch_returns_empty_when_credentials_unset(monkeypatch):
     monkeypatch.setattr("app.ingestion.adapters.email_adapter.settings", _UNCONFIGURED_SETTINGS)
 
-    adapter = EmailAdapter("test_source", parser=_fake_parser, enabled=True)
+    adapter = EmailAdapter(1, "test_source", parser=_fake_parser, enabled=True)
     assert adapter.fetch() == []
 
 
@@ -165,7 +167,7 @@ def test_fetch_ignores_message_already_marked_processed(monkeypatch):
     monkeypatch.setattr("app.ingestion.adapters.email_adapter.settings", _CONFIGURED_SETTINGS)
     repo = _FakeProcessedRepo(already_processed={"<already-seen@example.com>"})
 
-    adapter = EmailAdapter("test_source", parser=_fake_parser, mailboxes=["INBOX"], enabled=True, processed_repo=repo)
+    adapter = EmailAdapter(1, "test_source", parser=_fake_parser, mailboxes=["INBOX"], enabled=True, processed_repo=repo)
     candidates = adapter.fetch()
 
     assert candidates == []
@@ -179,8 +181,8 @@ def test_fetch_marks_new_message_as_processed_after_parsing(monkeypatch):
     monkeypatch.setattr("app.ingestion.adapters.email_adapter.settings", _CONFIGURED_SETTINGS)
     repo = _FakeProcessedRepo()
 
-    adapter = EmailAdapter("test_source", parser=_fake_parser, mailboxes=["INBOX"], enabled=True, processed_repo=repo)
+    adapter = EmailAdapter(1, "test_source", parser=_fake_parser, mailboxes=["INBOX"], enabled=True, processed_repo=repo)
     candidates = adapter.fetch()
 
     assert len(candidates) == 1
-    assert repo.marked == [("test_source", "<new-message@example.com>")]
+    assert repo.marked == [(1, "test_source", "<new-message@example.com>")]

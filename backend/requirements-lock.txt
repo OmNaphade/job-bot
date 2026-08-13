@@ -12,6 +12,7 @@ annotated-doc==0.0.5
 annotated-types==0.8.0
 anyio==4.14.2
 APScheduler==3.10.4
+bcrypt==5.0.0
 beautifulsoup4==4.12.3
 certifi==2026.7.22
 charset-normalizer==3.4.9

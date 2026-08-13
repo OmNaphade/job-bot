@@ -10,6 +10,11 @@ class JobCandidate:
     link: str
     source: str
     posted_at: Optional[str] = None
+    # Company logo URL (e.g. Clearbit's logo.clearbit.com/<domain>), populated only
+    # when an adapter can derive a real company domain -- see enrichment.py. Left
+    # unset rather than guessed from the company display name, which produces wrong
+    # logos more often than none.
+    logo_url: Optional[str] = None
 
 
 @dataclass(frozen=True)

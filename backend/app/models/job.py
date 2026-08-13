@@ -10,6 +10,7 @@ class JobBase(BaseModel):
     link: str = Field(..., min_length=1)
     source: str = "manual"
     posted_at: Optional[str] = None
+    logo_url: Optional[str] = None
 
 
 class JobCreate(JobBase):

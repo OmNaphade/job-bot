@@ -44,6 +44,31 @@ def test_greenhouse_fetch_maps_job_fields(monkeypatch):
     assert candidate.location == "Remote"
     assert candidate.link == "https://boards.greenhouse.io/stripe/jobs/123"
     assert candidate.source == "greenhouse:stripe"
+    # boards.greenhouse.io is Greenhouse's own default host, not the company's
+    # domain -- no logo should be derived from it.
+    assert candidate.logo_url is None
+
+
+def test_greenhouse_fetch_derives_logo_from_custom_domain(monkeypatch):
+    payload = {
+        "jobs": [
+            {
+                "title": "Account Executive",
+                "absolute_url": "https://stripe.com/jobs/search?gh_jid=123",
+                "location": {"name": "SF"},
+                "updated_at": "2026-07-20T00:00:00Z",
+            }
+        ]
+    }
+    monkeypatch.setattr(
+        "app.ingestion.adapters.ats_adapters.requests.get",
+        lambda url, headers=None, timeout=None: _FakeResponse(payload),
+    )
+
+    adapter = GreenhouseAdapter("stripe", enabled=True)
+    candidates = adapter.fetch()
+
+    assert candidates[0].logo_url == "https://logo.clearbit.com/stripe.com"
 
 
 def test_greenhouse_fetch_returns_empty_on_request_failure(monkeypatch):

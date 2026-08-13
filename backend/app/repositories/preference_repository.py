@@ -7,27 +7,28 @@ from app.services.errors import DuplicateResourceError
 
 
 class PreferenceRepository:
-    def list_preferences(self) -> List[Preference]:
+    def list_preferences(self, user_id: int) -> List[Preference]:
         with db_session() as connection:
             rows = connection.execute(
-                "SELECT id, keyword, kind, location FROM preferences ORDER BY id DESC"
+                "SELECT id, keyword, kind, location FROM preferences WHERE user_id = ? ORDER BY id DESC",
+                (user_id,),
             ).fetchall()
         return [Preference(**dict(row)) for row in rows]
 
-    def list_keywords_by_kind(self, kind: PreferenceKind) -> List[str]:
+    def list_keywords_by_kind(self, user_id: int, kind: PreferenceKind) -> List[str]:
         with db_session() as connection:
             rows = connection.execute(
-                "SELECT keyword FROM preferences WHERE kind = ? ORDER BY id ASC",
-                (kind,),
+                "SELECT keyword FROM preferences WHERE user_id = ? AND kind = ? ORDER BY id ASC",
+                (user_id, kind),
             ).fetchall()
         return [row["keyword"] for row in rows]
 
-    def create_preference(self, payload: PreferenceCreate) -> Preference:
+    def create_preference(self, user_id: int, payload: PreferenceCreate) -> Preference:
         with db_session() as connection:
             try:
                 cursor = connection.execute(
-                    "INSERT INTO preferences (keyword, kind, location) VALUES (?, ?, ?)",
-                    (payload.keyword, payload.kind, payload.location),
+                    "INSERT INTO preferences (user_id, keyword, kind, location) VALUES (?, ?, ?, ?)",
+                    (user_id, payload.keyword, payload.kind, payload.location),
                 )
             except sqlite3.IntegrityError as exc:
                 raise DuplicateResourceError(
@@ -36,16 +37,18 @@ class PreferenceRepository:
             preference_id = cursor.lastrowid
         return Preference(id=preference_id, **payload.model_dump())
 
-    def delete_preference(self, preference_id: int) -> None:
+    def delete_preference(self, user_id: int, preference_id: int) -> None:
         with db_session() as connection:
-            connection.execute("DELETE FROM preferences WHERE id = ?", (preference_id,))
+            connection.execute(
+                "DELETE FROM preferences WHERE id = ? AND user_id = ?", (preference_id, user_id)
+            )
 
-    def replace_kind(self, kind: PreferenceKind, keywords: List[str]) -> List[str]:
+    def replace_kind(self, user_id: int, kind: PreferenceKind, keywords: List[str]) -> List[str]:
         deduped = list(dict.fromkeys(keyword.strip() for keyword in keywords if keyword.strip()))
         with db_session() as connection:
-            connection.execute("DELETE FROM preferences WHERE kind = ?", (kind,))
+            connection.execute("DELETE FROM preferences WHERE user_id = ? AND kind = ?", (user_id, kind))
             connection.executemany(
-                "INSERT INTO preferences (keyword, kind, location) VALUES (?, ?, NULL)",
-                [(keyword, kind) for keyword in deduped],
+                "INSERT INTO preferences (user_id, keyword, kind, location) VALUES (?, ?, ?, NULL)",
+                [(user_id, keyword, kind) for keyword in deduped],
             )
         return deduped

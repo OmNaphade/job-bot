@@ -83,12 +83,7 @@ copy .env.example .env
 REM edit .env with real values
 ```
 
-| Variable | Description | Default |
-|---|---|---|
-| `TELEGRAM_BOT_TOKEN` | Bot token from @BotFather | — |
-| `TELEGRAM_CHAT_ID` | Chat id to send alerts to | — |
-
-Every other source (RSS feeds, LinkedIn/Naukri email alerts) has its own env vars with working defaults where a public feed exists — full reference in [bot_docs/SOURCES.md](bot_docs/SOURCES.md).
+Notification channels (Telegram/Slack/Discord) aren't env vars — each account sets its own from **Settings → Notifications** in the app after signing up. Every other source (RSS feeds, LinkedIn/Naukri email alerts) has its own env vars with working defaults where a public feed exists — full reference in [bot_docs/SOURCES.md](bot_docs/SOURCES.md).
 
 ## Usage
 
@@ -98,14 +93,16 @@ Every other source (RSS feeds, LinkedIn/Naukri email alerts) has its own env var
 uvicorn main:app --reload --host 127.0.0.1 --port 9000
 ```
 
-The scheduler starts automatically with the app and polls on its own from then on. A couple of endpoints to try once it's up:
+The scheduler starts automatically with the app and ticks on its own from then on, running each account's ingestion pass when it's actually due. A couple of endpoints to try once it's up:
 
 ```bash
 curl http://127.0.0.1:9000/health
-curl -X POST http://127.0.0.1:9000/ingest
+curl -X POST http://127.0.0.1:9000/auth/signup -H "Content-Type: application/json" \
+  -d '{"email": "you@example.com", "password": "at-least-8-chars"}'
+# use the returned token as: -H "Authorization: Bearer <token>"
 ```
 
-### Frontend (optional dashboard)
+### Frontend (dashboard + accounts)
 
 ```bash
 cd frontend
@@ -113,7 +110,7 @@ flutter pub get
 flutter run -d chrome    # or: flutter run -d windows
 ```
 
-Points at `127.0.0.1:9000` by default; change it in-app via the 🖥 **Server Connection** screen if your backend runs elsewhere (e.g. on a phone reaching your PC over LAN). Full instructions, including running on a real Android/iOS device, in [frontend/README.md](frontend/README.md) and [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios).
+Points at `127.0.0.1:9000` by default; change it in-app via **Settings → Server connection** if your backend runs elsewhere (e.g. on a phone reaching your PC over LAN), then sign up or log in. Full instructions, including running on a real Android/iOS device, in [frontend/README.md](frontend/README.md) and [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios).
 
 ## Project Structure
 

@@ -1,6 +1,7 @@
-"""Entrypoint for a single ingestion pass, meant for the scheduled GitHub Actions
-runner (see .github/workflows/ingest.yml) -- a short-lived process that fetches,
-matches, dedupes, persists, and notifies once, then exits.
+"""Entrypoint for a single multi-user ingestion pass, meant for the scheduled
+GitHub Actions runner (see .github/workflows/ingest.yml) -- a short-lived
+process that runs one pass per user (skipping anyone not yet due per their own
+poll_interval_hours), then exits.
 
 Run from the `backend/` directory: `python -m scripts.run_ingestion_once`
 """
@@ -28,27 +29,28 @@ def main() -> None:
     logger = logging.getLogger(__name__)
 
     try:
-        result = IngestionService().run()
+        result = IngestionService().run_all_users()
     except Exception as exc:
         logger.exception("Ingestion run failed")
-        _write_step_summary(f"### Ingestion run failed\n\n```\n{exc}\n```\n\nEvery run (success or failure) is also recorded in `ingestion_runs` -- see `GET /ingestion/runs`.")
+        _write_step_summary(f"### Ingestion run failed\n\n```\n{exc}\n```\n\nEvery per-user run (success or failure) is also recorded in `ingestion_runs` -- see `GET /ingestion/runs`.")
         raise
 
     logger.info("Ingestion run result: %s", result)
 
-    source_rows = "\n".join(
-        f"| {source} | {fetched} | {result['matched_by_source'].get(source, 0)} |"
-        for source, fetched in result["fetched_by_source"].items()
+    user_rows = "\n".join(
+        f"| {run['user_id']} | {run['fetched']} | {run['matched']} | {run['new']} | {run['delivered']} |"
+        for run in result["per_user"]
     )
     _write_step_summary(
         "### Ingestion run succeeded\n\n"
-        f"- Fetched: {result['fetched']}\n"
-        f"- Matched: {result['matched']}\n"
-        f"- New: {result['new']}\n"
-        f"- Delivered to Telegram: {result['delivered']}\n\n"
-        "| Source | Fetched | Matched |\n"
-        "|---|---|---|\n"
-        f"{source_rows}\n"
+        f"- Users run: {result['users_run']}\n"
+        f"- Total fetched: {result['total_fetched']}\n"
+        f"- Total matched: {result['total_matched']}\n"
+        f"- Total new: {result['total_new']}\n"
+        f"- Total delivered: {result['total_delivered']}\n\n"
+        "| User ID | Fetched | Matched | New | Delivered |\n"
+        "|---|---|---|---|---|\n"
+        f"{user_rows}\n"
     )
 
 

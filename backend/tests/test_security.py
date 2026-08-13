@@ -1,46 +1,48 @@
 import pytest
-from fastapi import FastAPI
-from fastapi.testclient import TestClient
+from fastapi import HTTPException
 
-from app.api.routes import router
-from app.core import security
-
-
-class _FakeSettings:
-    def __init__(self, api_key):
-        self.api_key = api_key
+from app.core.security import get_current_user, hash_password, verify_password
+from app.repositories.session_repository import SessionRepository
+from app.repositories.user_repository import UserRepository
 
 
-@pytest.fixture
-def client_with_key(tmp_db, monkeypatch):
-    monkeypatch.setattr(security, "settings", _FakeSettings("secret123"))
-    app = FastAPI()
-    app.include_router(router)
-    return TestClient(app)
+def test_hash_password_round_trips():
+    hashed = hash_password("correct horse battery staple")
+    assert verify_password("correct horse battery staple", hashed)
+    assert not verify_password("wrong password", hashed)
 
 
-def test_health_stays_open_when_api_key_configured(client_with_key):
-    assert client_with_key.get("/health").status_code == 200
+def test_hash_password_salts_differently_each_time():
+    assert hash_password("same-password") != hash_password("same-password")
 
 
-def test_protected_route_rejects_missing_key(client_with_key):
-    assert client_with_key.get("/jobs").status_code == 401
+def test_verify_password_returns_false_for_malformed_hash():
+    assert verify_password("anything", "not-a-real-bcrypt-hash") is False
 
 
-def test_protected_route_rejects_wrong_key(client_with_key):
-    response = client_with_key.get("/jobs", headers={"X-API-Key": "wrong"})
-    assert response.status_code == 401
+def test_get_current_user_rejects_missing_header(tmp_db):
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user(None)
+    assert exc_info.value.status_code == 401
 
 
-def test_protected_route_accepts_correct_key(client_with_key):
-    response = client_with_key.get("/jobs", headers={"X-API-Key": "secret123"})
-    assert response.status_code == 200
+def test_get_current_user_rejects_non_bearer_header(tmp_db):
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user("not-a-bearer-token")
+    assert exc_info.value.status_code == 401
 
 
-def test_auth_disabled_when_api_key_unset(tmp_db, monkeypatch):
-    monkeypatch.setattr(security, "settings", _FakeSettings(None))
-    app = FastAPI()
-    app.include_router(router)
-    client = TestClient(app)
+def test_get_current_user_rejects_unknown_token(tmp_db):
+    with pytest.raises(HTTPException) as exc_info:
+        get_current_user("Bearer does-not-exist")
+    assert exc_info.value.status_code == 401
 
-    assert client.get("/jobs").status_code == 200
+
+def test_get_current_user_resolves_valid_session(tmp_db):
+    record = UserRepository().create("user@example.com", hash_password("password123"))
+    token = SessionRepository().create(record.id)
+
+    user = get_current_user(f"Bearer {token}")
+
+    assert user.id == record.id
+    assert user.email == "user@example.com"

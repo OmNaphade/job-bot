@@ -8,8 +8,8 @@ class JobService:
     def __init__(self, repository: JobRepository | None = None) -> None:
         self.repository = repository or JobRepository()
 
-    def get_jobs(self) -> List[Job]:
-        return self.repository.list_jobs()
+    def get_jobs(self, user_id: int) -> List[Job]:
+        return self.repository.list_jobs(user_id)
 
-    def add_job(self, payload: JobCreate) -> Job:
-        return self.repository.create_job(payload)
+    def add_job(self, user_id: int, payload: JobCreate) -> Job:
+        return self.repository.create_job(user_id, payload)

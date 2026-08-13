@@ -12,7 +12,6 @@ class ServerConfig {
   ServerConfig._();
 
   static const _prefsKey = 'backend_base_url';
-  static const _apiKeyPrefsKey = 'backend_api_key';
 
   static String defaultBaseUrl() {
     if (kIsWeb) return 'http://127.0.0.1:9000';
@@ -28,23 +27,6 @@ class ServerConfig {
   static Future<void> saveBaseUrl(String url) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_prefsKey, normalize(url));
-  }
-
-  /// The X-API-Key header value, if the backend has API_KEY configured.
-  /// Null/empty means auth is off (the default) -- see backend/.env.example.
-  static Future<String?> loadApiKey() async {
-    final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getString(_apiKeyPrefsKey);
-    return (value == null || value.isEmpty) ? null : value;
-  }
-
-  static Future<void> saveApiKey(String? apiKey) async {
-    final prefs = await SharedPreferences.getInstance();
-    if (apiKey == null || apiKey.trim().isEmpty) {
-      await prefs.remove(_apiKeyPrefsKey);
-    } else {
-      await prefs.setString(_apiKeyPrefsKey, apiKey.trim());
-    }
   }
 
   static String normalize(String url) {

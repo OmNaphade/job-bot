@@ -40,8 +40,8 @@ jobs:
 
       - name: Run one ingestion pass
         env:
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          # Notification channels (Telegram/Slack/Discord) are per-account, set
+          # through the app -- not repository secrets. See bot_docs/OPERATIONS.md.
           ALERT_EMAIL_ADDRESS: ${{ secrets.ALERT_EMAIL_ADDRESS }}
           ALERT_EMAIL_APP_PASSWORD: ${{ secrets.ALERT_EMAIL_APP_PASSWORD }}
           ALERT_EMAIL_IMAP_HOST: ${{ secrets.ALERT_EMAIL_IMAP_HOST }}
@@ -58,6 +58,15 @@ jobs:
           NODESK_FEED_URL: ${{ secrets.NODESK_FEED_URL }}
           JOBSPRESSO_FEED_URL: ${{ secrets.JOBSPRESSO_FEED_URL }}
           REMOTEOK_API_URL: ${{ secrets.REMOTEOK_API_URL }}
+          ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
+          ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
+          ADZUNA_COUNTRY: ${{ secrets.ADZUNA_COUNTRY }}
+          ADZUNA_SEARCH_QUERIES: ${{ secrets.ADZUNA_SEARCH_QUERIES }}
+          JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
+          JOOBLE_SEARCH_QUERIES: ${{ secrets.JOOBLE_SEARCH_QUERIES }}
+          JOOBLE_LOCATION: ${{ secrets.JOOBLE_LOCATION }}
+          THEMUSE_API_KEY: ${{ secrets.THEMUSE_API_KEY }}
+          THEMUSE_CATEGORIES: ${{ secrets.THEMUSE_CATEGORIES }}
           GREENHOUSE_BOARD_TOKENS: ${{ secrets.GREENHOUSE_BOARD_TOKENS }}
           LEVER_COMPANY_SLUGS: ${{ secrets.LEVER_COMPANY_SLUGS }}
           ASHBY_BOARD_NAMES: ${{ secrets.ASHBY_BOARD_NAMES }}

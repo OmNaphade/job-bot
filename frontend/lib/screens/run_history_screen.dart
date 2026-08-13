@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:job_alert_frontend/services/api_service.dart';
+import 'package:job_alert_frontend/theme/app_colors.dart';
 
 class RunHistoryScreen extends StatefulWidget {
   const RunHistoryScreen({super.key});
@@ -63,6 +64,7 @@ class _RunCard extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     final status = (run['status'] as String?) ?? 'unknown';
     final isSuccess = status == 'success';
+    final statusColor = isSuccess ? Theme.of(context).appStatusColors.success : colorScheme.error;
     final startedAt = (run['started_at'] as String?) ?? '';
     final errorMessage = run['error_message'] as String?;
 
@@ -76,7 +78,7 @@ class _RunCard extends StatelessWidget {
               children: [
                 Icon(
                   isSuccess ? Icons.check_circle_rounded : Icons.error_rounded,
-                  color: isSuccess ? Colors.green : colorScheme.error,
+                  color: statusColor,
                   size: 18,
                 ),
                 const SizedBox(width: 8),
@@ -89,7 +91,7 @@ class _RunCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: (isSuccess ? Colors.green : colorScheme.error).withValues(alpha: 0.14),
+                    color: statusColor.withValues(alpha: 0.14),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -97,7 +99,7 @@ class _RunCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
-                      color: isSuccess ? Colors.green : colorScheme.error,
+                      color: statusColor,
                     ),
                   ),
                 ),

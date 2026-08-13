@@ -18,12 +18,16 @@ from typing import List
 import requests
 
 from app.ingestion.adapters.base_adapter import BaseAdapter
+from app.ingestion.enrichment import clearbit_logo_url, domain_from_url
 from app.ingestion.models import JobCandidate
 
 logger = logging.getLogger(__name__)
 
 _USER_AGENT = "job-alert-bot/1.0 (+https://github.com/OmNaphade/job-bot)"
 _TIMEOUT_SECONDS = 10
+# Greenhouse's own default hosting domain -- a job's absolute_url only reveals
+# a real company domain when the board uses a custom domain instead of this.
+_GREENHOUSE_DEFAULT_HOST = frozenset({"boards.greenhouse.io"})
 
 
 class GreenhouseAdapter(BaseAdapter):
@@ -52,6 +56,11 @@ class GreenhouseAdapter(BaseAdapter):
             if not link or not title:
                 continue
             location = (job.get("location") or {}).get("name") or "Unknown"
+            # Only a genuine signal when the board uses a custom domain (e.g.
+            # stripe.com/jobs/...) rather than Greenhouse's own
+            # boards.greenhouse.io -- otherwise this would just fetch
+            # Greenhouse's logo, not the company's.
+            domain = domain_from_url(link, exclude_hosts=_GREENHOUSE_DEFAULT_HOST)
             candidates.append(
                 JobCandidate(
                     title=title,
@@ -60,6 +69,7 @@ class GreenhouseAdapter(BaseAdapter):
                     link=link,
                     source=self.source_name,
                     posted_at=job.get("updated_at"),
+                    logo_url=clearbit_logo_url(domain),
                 )
             )
         return candidates

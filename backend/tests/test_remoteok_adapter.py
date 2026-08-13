@@ -46,6 +46,36 @@ def test_fetch_skips_legal_notice_and_maps_job_fields(monkeypatch):
     assert candidate.location == "Worldwide"
     assert candidate.link == "https://remoteok.com/remote-jobs/123"
     assert candidate.source == "remoteok"
+    assert candidate.logo_url is None
+
+
+def test_fetch_passes_through_company_logo_when_present(monkeypatch):
+    payload = [
+        {
+            "position": "Backend Engineer",
+            "company": "Acme Corp",
+            "location": "Worldwide",
+            "url": "https://remoteok.com/remote-jobs/123",
+            "company_logo": "https://remoteok.com/assets/logos/acme.png",
+        }
+    ]
+
+    class _FakeResponse:
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return payload
+
+    monkeypatch.setattr(
+        "app.ingestion.adapters.remoteok_adapter.requests.get",
+        lambda url, headers=None, timeout=None: _FakeResponse(),
+    )
+
+    adapter = RemoteOkAdapter("https://remoteok.com/api", enabled=True)
+    candidates = adapter.fetch()
+
+    assert candidates[0].logo_url == "https://remoteok.com/assets/logos/acme.png"
 
 
 def test_fetch_returns_empty_on_request_failure(monkeypatch):

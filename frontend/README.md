@@ -30,7 +30,7 @@ Other targets work the same way — list what's available on your machine with `
 
 ### 3. Point it at your backend
 
-By default the app targets `127.0.0.1:9000` (`10.0.2.2:9000` on the Android emulator, the emulator's alias for the host's loopback). If your backend runs elsewhere, open **Server Connection** (the 🖥 icon in the app bar, or the button offered directly on the "couldn't reach the backend" error screen), enter the backend URL, tap **Test connection**, then **Save** — this is persisted across app restarts via `shared_preferences`. If the backend has `API_KEY` set, enter the same value in the API Key field on that same screen.
+By default the app targets `127.0.0.1:9000` (`10.0.2.2:9000` on the Android emulator, the emulator's alias for the host's loopback). If your backend runs elsewhere, open **Settings → Server connection** (or the button offered directly on the "couldn't reach the backend" error screen), enter the backend URL, tap **Test connection**, then **Save** — this is persisted across app restarts via `shared_preferences`. Then sign up or log in with your own account — the app opens to the login screen by default; there's no shared API key to enter anymore.
 
 Running on a real Android/iOS device (not an emulator) needs your PC's LAN IP instead of `127.0.0.1`, plus the backend bound to `0.0.0.0` — full walkthrough in [bot_docs/OPERATIONS.md § Running on a phone](../bot_docs/OPERATIONS.md#running-on-a-phone-androidios).
 
