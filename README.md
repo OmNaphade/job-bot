@@ -1,6 +1,6 @@
 # Job Alert Platform
 
-A continuously-running job-monitoring bot with a FastAPI backend and a Flutter dashboard. It polls job sources on a schedule, matches new postings against your saved keyword preferences, and pushes a Telegram alert the moment something new matches — without you needing to open the app.
+A continuously-running job-monitoring bot with a FastAPI backend and a Flutter dashboard. It polls job sources on a schedule, matches new postings against your saved keyword preferences, and pushes a notification (Telegram, Slack, and/or Discord) the moment something new matches — without you needing to open the app.
 
 [![CI](https://github.com/OmNaphade/job-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/OmNaphade/job-bot/actions/workflows/ci.yml)
 [![Scheduled ingestion](https://github.com/OmNaphade/job-bot/actions/workflows/ingest.yml/badge.svg)](https://github.com/OmNaphade/job-bot/actions/workflows/ingest.yml)
@@ -27,31 +27,34 @@ A continuously-running job-monitoring bot with a FastAPI backend and a Flutter d
 
 ## About
 
-Job hunting means checking the same handful of boards over and over. This runs the checking for you: an ingestion pipeline fetches candidate postings from several remote-job RSS/JSON feeds, your own LinkedIn/Naukri saved-search email alerts, and (optionally) specific companies' own Greenhouse/Lever/Ashby job boards, filters them against include/exclude keywords you set, drops anything already seen, and sends a Telegram digest for what's actually new. It's designed to never scrape LinkedIn/Naukri directly — those two go through your own email alerts instead, everything else uses feeds/APIs meant for exactly this kind of consumption.
+Job hunting means checking the same handful of boards over and over. This runs the checking for you: an ingestion pipeline fetches candidate postings from several remote-job RSS/JSON feeds, a handful of documented aggregator job-search APIs, your own LinkedIn/Naukri/Indeed saved-search email alerts, and (optionally) specific companies' own Greenhouse/Lever/Ashby job boards, filters them against include/exclude keywords you set, drops anything already seen, and sends a digest to whichever notification channels (Telegram/Slack/Discord) you've configured for what's actually new. It's designed to never scrape LinkedIn/Naukri/Indeed directly — those three go through your own email alerts instead, everything else uses feeds/APIs meant for exactly this kind of consumption.
 
-It runs unattended via a scheduled GitHub Actions workflow (hourly), so it doesn't depend on a laptop staying on. The Flutter app is an optional dashboard on top, not a requirement for the bot to function.
+It runs unattended via a scheduled GitHub Actions workflow (hourly), so it doesn't depend on a laptop staying on. The Flutter app is an optional, login-gated dashboard on top, not a requirement for the bot to function.
 
 ## Built With
 
 - Python 3.12 / FastAPI (backend API)
 - APScheduler (background polling for local/always-on runs)
+- `bcrypt` (password hashing) + opaque bearer session tokens for per-account auth
 - SQLite, single-file, committed to git as the durable state store
-- Flutter / Material 3 (dashboard UI)
-- `feedparser` + `requests` (RSS/JSON source adapters)
+- Flutter / Material 3 (dashboard UI, themed light/dark)
+- `feedparser` + `requests` (RSS/JSON and aggregator-API source adapters)
 - GitHub Actions (hourly scheduled ingestion runner + CI)
 
 ## Features
 
-- Polls 6 verified RSS/JSON remote-job feeds (WeWorkRemotely, Himalayas, Remotive, NoDesk, Jobspresso, RemoteOK) with no scraping involved
-- LinkedIn/Naukri support via your own saved-search email alerts (IMAP), never talks to linkedin.com/naukri.com directly
+- Multi-user accounts — email/password signup and login (optionally gated by an invite code), each account with its own keyword preferences, source toggles, notification channels, and job history
+- Polls 6 verified RSS/JSON remote-job feeds (WeWorkRemotely, Himalayas, Remotive, NoDesk, Jobspresso, RemoteOK) plus Arbeitnow's public job-board API — all no-scraping Tier A sources, no key required
+- Optional keyed aggregator job-search APIs — Adzuna, Jooble, and The Muse — for broader, keyword-driven search beyond the fixed remote-job feeds
+- LinkedIn/Naukri/Indeed support via your own saved-search email alerts (IMAP), never talks to linkedin.com/naukri.com/indeed.com directly
 - Optional direct-from-company-site sources — pulls postings straight from a company's own Greenhouse/Lever/Ashby job board API, per company you configure
 - Optional Foundit and Unstop integrations via their own internal (undocumented) APIs — opt-in and more fragile than the other sources, see `bot_docs/SOURCES.md` before enabling
-- Include/exclude keyword matching against title/company/location
+- Include/exclude keyword matching against title/company/location, each filter optionally scoped to a location
 - Atomic cross-run dedup at the database layer — safe to trigger a manual check anytime, even mid-scheduled-run
-- Telegram digest notification the moment something new matches
-- Runs hourly on GitHub's infrastructure — no server or always-on machine required
-- Every ingestion run (success or failure) is recorded with timestamps and aggregate counts; a per-source fetched/matched breakdown is logged and written to the GitHub Actions run summary for every run
-- Flutter dashboard for stored jobs, on-demand checks, and source/keyword configuration — runs on web, Windows, Android, and iOS, with an in-app, persisted backend-URL setting so a phone on the same Wi-Fi can reach a backend running on your PC (see [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios))
+- Digest notification to any combination of Telegram, Slack, and Discord — configured per account from the app, delivery retried per-channel on the next run if it fails
+- A background scheduler runs each account's ingestion pass on its own configurable interval — no server or always-on machine required when deployed via the hourly GitHub Actions workflow instead
+- Every ingestion run (success or failure) is recorded with timestamps and aggregate counts; a per-source fetched/matched breakdown is logged and written to the GitHub Actions run summary for every run, and surfaced in the Flutter app's run-history screen
+- Flutter dashboard for stored jobs, on-demand checks, source/keyword configuration, and notification-channel setup — runs on web, Windows, Android, and iOS, with an in-app, persisted backend-URL setting so a phone on the same Wi-Fi can reach a backend running on your PC (see [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios))
 
 ## Demo
 
@@ -64,7 +67,7 @@ See [bot_docs/README.md](bot_docs/README.md#screenshot) for a screenshot of the 
 - Python 3.12+
 - Flutter SDK (only needed for the dashboard UI)
 - A Telegram bot token ([@BotFather](https://t.me/BotFather)) — optional, but alerts don't send without it
-- Optionally, a dedicated Gmail account + [App Password](https://myaccount.google.com/apppasswords) if you want LinkedIn/Naukri alerts
+- Optionally, a dedicated Gmail account + [App Password](https://myaccount.google.com/apppasswords) if you want LinkedIn/Naukri/Indeed alerts
 
 ### Installation
 
@@ -83,7 +86,7 @@ copy .env.example .env
 REM edit .env with real values
 ```
 
-Notification channels (Telegram/Slack/Discord) aren't env vars — each account sets its own from **Settings → Notifications** in the app after signing up. Every other source (RSS feeds, LinkedIn/Naukri email alerts) has its own env vars with working defaults where a public feed exists — full reference in [bot_docs/SOURCES.md](bot_docs/SOURCES.md).
+Notification channels (Telegram/Slack/Discord) aren't env vars — each account sets its own from **Settings → Notifications** in the app after signing up. Every other source (RSS/aggregator-API feeds, LinkedIn/Naukri/Indeed email alerts) has its own env vars with working defaults where a public feed exists — full reference in [bot_docs/SOURCES.md](bot_docs/SOURCES.md).
 
 ## Usage
 
@@ -142,9 +145,9 @@ The primary way to run this is **not** locally — `.github/workflows/ingest.yml
 
 ## Roadmap
 
-- [ ] Validate the LinkedIn/Naukri email parsers against a real alert email (written against known structure, untested live)
+- [x] Validate the LinkedIn and Indeed email parsers against a real alert email — both now calibrated against real digests; Naukri's parser is still best-effort (no genuine job-match digest has been available to check it against yet, only newsletter content)
 - [x] Use `preferences.location` in matching — a keyword filter can now be scoped to a location (`POST /preferences` with both `keyword` and `location`); bulk `POST /ingest/keywords` still applies unscoped
-- [ ] Surface ingestion run history in the Flutter dashboard (`GET /ingestion/runs` already exists, just no UI for it yet)
+- [x] Surface ingestion run history in the Flutter dashboard — `run_history_screen.dart`, backed by `GET /ingestion/runs`
 - [ ] Pull postings from public Telegram job-posting channels — needs a personal-account MTProto login (Telethon/Pyrogram), not just the bot API, plus a per-channel message parser; scoping, not started
 
 ## Security

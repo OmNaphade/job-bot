@@ -55,10 +55,14 @@ Runs in CI on every push/PR via [`.github/workflows/ci.yml`](../.github/workflow
 
 ```
 lib/
-├── main.dart
-├── models/            # e.g. IngestionConfig
-├── screens/           # home, config, keyword config, run history, server settings
-├── services/          # api_service (backend HTTP client), server_config (persisted URL/API key)
+├── main.dart          # AuthGate: routes to LoginScreen or HomeScreen based on session state
+├── models/            # IngestionConfig, NotificationSettings, User
+├── screens/           # login, signup, home, settings hub, ingestion sources, keywords,
+│                      # notifications, run history, server connection
+├── services/          # api_service (backend HTTP client, attaches session token),
+│                      # auth_service (session state, signup/login/logout),
+│                      # server_config (persisted backend URL)
+├── theme/             # app_colors, app_theme — dark-first Material 3 design tokens
 └── widgets/
 ```
 
