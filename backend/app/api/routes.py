@@ -1,7 +1,10 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 
+from app.api import matching_routes, resume_routes
+from app.core.config import settings
+from app.core.rate_limit import limiter
 from app.core.security import extract_bearer_token, get_current_user
 from app.ingestion.services.ingestion_service import IngestionService
 from app.models.ingestion_run import IngestionRun
@@ -59,7 +62,10 @@ def health_check() -> dict[str, str]:
 
 
 @router.post("/auth/signup", response_model=AuthResponse, tags=["auth"])
-def signup(payload: UserCreate, service: AuthService = Depends(get_auth_service)) -> AuthResponse:
+@limiter.limit(settings.signup_rate_limit)
+def signup(
+    request: Request, payload: UserCreate, service: AuthService = Depends(get_auth_service)
+) -> AuthResponse:
     try:
         return service.signup(payload)
     except DuplicateResourceError as exc:
@@ -69,7 +75,10 @@ def signup(payload: UserCreate, service: AuthService = Depends(get_auth_service)
 
 
 @router.post("/auth/login", response_model=AuthResponse, tags=["auth"])
-def login(payload: LoginRequest, service: AuthService = Depends(get_auth_service)) -> AuthResponse:
+@limiter.limit(settings.login_rate_limit)
+def login(
+    request: Request, payload: LoginRequest, service: AuthService = Depends(get_auth_service)
+) -> AuthResponse:
     try:
         return service.login(payload)
     except InvalidCredentialsError as exc:
@@ -188,5 +197,8 @@ def update_keywords(
         "exclude_keywords": [f.keyword for f in config.exclude_keywords],
     }
 
+
+protected.include_router(resume_routes.router)
+protected.include_router(matching_routes.router)
 
 router.include_router(protected)

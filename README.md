@@ -1,45 +1,48 @@
 # Job Alert Platform
 
-A continuously-running job-monitoring bot with a FastAPI backend and a Flutter dashboard. It polls job sources on a schedule, matches new postings against your saved keyword preferences, and pushes a notification (Telegram, Slack, and/or Discord) the moment something new matches — without you needing to open the app.
+A continuously-running, multi-user job-monitoring and personalization platform with a FastAPI backend and a Flutter dashboard. It polls job sources on a schedule, matches new postings against your saved keyword preferences, pushes a Telegram alert the moment something new matches, and — upload a resume — extracts your skills/titles/experience via Gemini to personalize what you see, without you needing to open the app.
 
 [![CI](https://github.com/OmNaphade/job-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/OmNaphade/job-bot/actions/workflows/ci.yml)
-[![Scheduled ingestion](https://github.com/OmNaphade/job-bot/actions/workflows/ingest.yml/badge.svg)](https://github.com/OmNaphade/job-bot/actions/workflows/ingest.yml)
 
 ## Table of Contents
 
-- [About](#about)
-- [Built With](#built-with)
-- [Features](#features)
-- [Demo](#demo)
-- [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Configuration](#configuration)
-- [Usage](#usage)
-- [Project Structure](#project-structure)
-- [Documentation](#documentation)
-- [Testing](#testing)
-- [Deployment](#deployment)
-- [Roadmap](#roadmap)
-- [Security](#security)
-- [License](#license)
-- [Contact](#contact)
+- [Job Alert Platform](#job-alert-platform)
+  - [Table of Contents](#table-of-contents)
+  - [About](#about)
+  - [Built With](#built-with)
+  - [Features](#features)
+  - [Demo](#demo)
+  - [Getting Started](#getting-started)
+    - [Prerequisites](#prerequisites)
+    - [Installation](#installation)
+    - [Configuration](#configuration)
+  - [Usage](#usage)
+    - [Backend](#backend)
+    - [Frontend (dashboard + accounts)](#frontend-dashboard--accounts)
+  - [Project Structure](#project-structure)
+  - [Documentation](#documentation)
+  - [Testing](#testing)
+  - [Deployment](#deployment)
+  - [Roadmap](#roadmap)
+  - [Security](#security)
+  - [License](#license)
+  - [Contact](#contact)
 
 ## About
 
 Job hunting means checking the same handful of boards over and over. This runs the checking for you: an ingestion pipeline fetches candidate postings from several remote-job RSS/JSON feeds, a handful of documented aggregator job-search APIs, your own LinkedIn/Naukri/Indeed saved-search email alerts, and (optionally) specific companies' own Greenhouse/Lever/Ashby job boards, filters them against include/exclude keywords you set, drops anything already seen, and sends a digest to whichever notification channels (Telegram/Slack/Discord) you've configured for what's actually new. It's designed to never scrape LinkedIn/Naukri/Indeed directly — those three go through your own email alerts instead, everything else uses feeds/APIs meant for exactly this kind of consumption.
 
-It runs unattended via a scheduled GitHub Actions workflow (hourly), so it doesn't depend on a laptop staying on. The Flutter app is an optional, login-gated dashboard on top, not a requirement for the bot to function.
+It runs unattended on a small always-on deployment (two OCI VMs — see [Deployment](#deployment)), so it doesn't depend on a laptop staying on. The Flutter app is an optional dashboard on top, not a requirement for the bot to function.
 
 ## Built With
 
 - Python 3.12 / FastAPI (backend API)
-- APScheduler (background polling for local/always-on runs)
-- `bcrypt` (password hashing) + opaque bearer session tokens for per-account auth
-- SQLite, single-file, committed to git as the durable state store
-- Flutter / Material 3 (dashboard UI, themed light/dark)
-- `feedparser` + `requests` (RSS/JSON and aggregator-API source adapters)
-- GitHub Actions (hourly scheduled ingestion runner + CI)
+- Postgres + pgvector (durable state store; migrations via Alembic)
+- A systemd timer on the deployment's worker VM (background polling, every 15 minutes)
+- Google Gemini (free tier) — structured resume extraction + embeddings, via `google-genai`
+- Flutter / Material 3 (dashboard UI)
+- `feedparser` + `requests` (RSS/JSON source adapters); `pypdf` (resume text extraction)
+- GitHub Actions (CI only — tests on every push/PR)
 
 ## Features
 
@@ -51,10 +54,13 @@ It runs unattended via a scheduled GitHub Actions workflow (hourly), so it doesn
 - Optional Foundit and Unstop integrations via their own internal (undocumented) APIs — opt-in and more fragile than the other sources, see `bot_docs/SOURCES.md` before enabling
 - Include/exclude keyword matching against title/company/location, each filter optionally scoped to a location
 - Atomic cross-run dedup at the database layer — safe to trigger a manual check anytime, even mid-scheduled-run
-- Digest notification to any combination of Telegram, Slack, and Discord — configured per account from the app, delivery retried per-channel on the next run if it fails
-- A background scheduler runs each account's ingestion pass on its own configurable interval — no server or always-on machine required when deployed via the hourly GitHub Actions workflow instead
-- Every ingestion run (success or failure) is recorded with timestamps and aggregate counts; a per-source fetched/matched breakdown is logged and written to the GitHub Actions run summary for every run, and surfaced in the Flutter app's run-history screen
-- Flutter dashboard for stored jobs, on-demand checks, source/keyword configuration, and notification-channel setup — runs on web, Windows, Android, and iOS, with an in-app, persisted backend-URL setting so a phone on the same Wi-Fi can reach a backend running on your PC (see [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios))
+- Telegram digest notification the moment something new matches
+- Runs every 15 minutes on a small always-on deployment — see [Deployment](#deployment)
+- Every ingestion run (success or failure) is recorded with timestamps and aggregate counts; a per-source fetched/matched breakdown is logged and queryable via `GET /ingestion/runs` or the worker's application log
+- Flutter dashboard for stored jobs, on-demand checks, and source/keyword configuration — runs on web, Windows, Android, and iOS, with an in-app, persisted backend-URL setting so a phone on the same Wi-Fi can reach a backend running on your PC (see [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios))
+- Upload a PDF resume and Gemini extracts your skills, titles, years of experience, seniority, locations, and education — only the extracted data is kept, never the original file
+- A "For You" tab ranks your ingested jobs by resume similarity (pgvector cosine distance over Gemini embeddings) — a re-ranking layer on top of your own keyword-filtered jobs, computed once per job at ingestion time, not per request
+- Per-IP rate limiting on signup/login (open signup by default, so this is what actually protects the free Gemini quota and stops scripted account creation)
 
 ## Demo
 
@@ -74,6 +80,7 @@ See [bot_docs/README.md](bot_docs/README.md#screenshot) for a screenshot of the 
 ```bash
 git clone https://github.com/OmNaphade/job-bot.git
 cd job-bot/backend
+docker compose up -d              # local Postgres+pgvector, see docker-compose.yml
 python -m venv .venv
 .venv\Scripts\activate
 pip install -r requirements.txt
@@ -83,7 +90,8 @@ pip install -r requirements.txt
 
 ```bash
 copy .env.example .env
-REM edit .env with real values
+REM edit .env with real values, then apply the schema:
+python -m alembic upgrade head
 ```
 
 Notification channels (Telegram/Slack/Discord) aren't env vars — each account sets its own from **Settings → Notifications** in the app after signing up. Every other source (RSS/aggregator-API feeds, LinkedIn/Naukri/Indeed email alerts) has its own env vars with working defaults where a public feed exists — full reference in [bot_docs/SOURCES.md](bot_docs/SOURCES.md).
@@ -96,7 +104,7 @@ Notification channels (Telegram/Slack/Discord) aren't env vars — each account 
 uvicorn main:app --reload --host 127.0.0.1 --port 9000
 ```
 
-The scheduler starts automatically with the app and ticks on its own from then on, running each account's ingestion pass when it's actually due. A couple of endpoints to try once it's up:
+This serves the API only — it doesn't run ingestion itself (see [Deployment](#deployment) for what does). To trigger a pass locally: `python -m scripts.run_ingestion_once` (every due account) or `POST /ingest` (just yours, immediately). A couple of endpoints to try once it's up:
 
 ```bash
 curl http://127.0.0.1:9000/health
@@ -119,10 +127,11 @@ Points at `127.0.0.1:9000` by default; change it in-app via **Settings → Serve
 
 ```
 .
-├── backend/            # FastAPI service + ingestion pipeline (routes, services, repositories, adapters)
+├── backend/            # FastAPI service + ingestion pipeline (routes, services, repositories, adapters, Alembic migrations)
 ├── frontend/           # Flutter dashboard
+├── deploy/             # OCI provisioning scripts (oci_deploy_app.sh for VM1, oci_deploy_db.sh for VM2)
 ├── bot_docs/           # architecture, API reference, source setup, deployment docs, screenshots
-├── .github/workflows/  # CI (ci.yml) + scheduled ingestion cron (ingest.yml)
+├── .github/workflows/  # CI (ci.yml) -- tests only, no scheduled workflow
 └── README.md
 ```
 
@@ -133,15 +142,15 @@ Architecture, the full API reference, the ingestion flow, data model, per-source
 ## Testing
 
 ```bash
-cd backend && pytest -q
+cd backend && docker compose up -d && pytest -q
 cd frontend && flutter analyze && flutter test
 ```
 
-Backend tests run against a temp SQLite DB with no live network calls — safe anywhere, including CI. Coverage details in [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#testing).
+Backend tests run against a real Postgres+pgvector instance (no live network calls to job sources) with per-test transaction rollback isolation — safe anywhere, including CI. Coverage details in [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#testing).
 
 ## Deployment
 
-The primary way to run this is **not** locally — `.github/workflows/ingest.yml` runs one ingestion pass every hour on GitHub's own infrastructure, so the bot works with zero servers and no dependency on any of your devices being online. One-time secret/permission setup is in [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#deploying-github-actions-as-the-always-on-runner).
+The primary way to run this is **not** locally — it deploys to two small always-free OCI VMs (one running the API + nginx, one running Postgres + a systemd timer that ticks every 15 minutes), so it works with no dependency on any of your devices being online. Provisioning scripts and one-time setup steps are in [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#deploying-to-oci-2-vms).
 
 ## Roadmap
 
@@ -149,10 +158,11 @@ The primary way to run this is **not** locally — `.github/workflows/ingest.yml
 - [x] Use `preferences.location` in matching — a keyword filter can now be scoped to a location (`POST /preferences` with both `keyword` and `location`); bulk `POST /ingest/keywords` still applies unscoped
 - [x] Surface ingestion run history in the Flutter dashboard — `run_history_screen.dart`, backed by `GET /ingestion/runs`
 - [ ] Pull postings from public Telegram job-posting channels — needs a personal-account MTProto login (Telethon/Pyrogram), not just the bot API, plus a per-channel message parser; scoping, not started
+- [ ] Shared/global job pool for matching, so one user's ingestion enriches everyone's candidate matches instead of each account only matching against jobs its own keyword filters already pulled in — needs splitting `jobs` into a shared postings table plus per-user visibility; real schema work, not started
 
 ## Security
 
-No secrets are ever committed — `.env` is gitignored, and GitHub Actions secrets are encrypted at rest. If you find an actual vulnerability, please open an issue rather than a public PR with exploit details.
+No secrets are ever committed — `.env` is gitignored on every machine (local, VM1, VM2). If you find an actual vulnerability, please open an issue rather than a public PR with exploit details.
 
 ## License
 

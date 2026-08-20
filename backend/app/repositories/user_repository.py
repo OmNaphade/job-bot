@@ -1,9 +1,10 @@
-import sqlite3
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.db.database import db_session
+import psycopg
+
+from app.db import database
 from app.models.user import User
 from app.services.errors import DuplicateResourceError
 
@@ -24,35 +25,39 @@ class UserRecord:
 
 class UserRepository:
     def create(self, email: str, password_hash: str) -> UserRecord:
-        now = datetime.now(timezone.utc).isoformat()
-        with db_session() as connection:
+        now = datetime.now(timezone.utc)
+        with database.db_session() as connection:
             try:
                 cursor = connection.execute(
-                    "INSERT INTO users (email, password_hash, created_at) VALUES (?, ?, ?)",
+                    "INSERT INTO users (email, password_hash, created_at) VALUES (%s, %s, %s) RETURNING id",
                     (email, password_hash, now),
                 )
-            except sqlite3.IntegrityError as exc:
+            except psycopg.errors.UniqueViolation as exc:
                 raise DuplicateResourceError(f"An account with email '{email}' already exists") from exc
-            user_id = cursor.lastrowid
-        return UserRecord(id=user_id, email=email, password_hash=password_hash, created_at=now)
+            user_id = cursor.fetchone()["id"]
+        return UserRecord(id=user_id, email=email, password_hash=password_hash, created_at=now.isoformat())
 
     def get_by_email(self, email: str) -> Optional[UserRecord]:
-        with db_session() as connection:
+        with database.db_session() as connection:
             row = connection.execute(
-                "SELECT id, email, password_hash, created_at FROM users WHERE email = ?",
+                "SELECT id, email, password_hash, created_at FROM users WHERE email = %s",
                 (email,),
             ).fetchone()
-        return UserRecord(**dict(row)) if row else None
+        if row is None:
+            return None
+        return UserRecord(**{**row, "created_at": row["created_at"].isoformat()})
 
     def get_by_id(self, user_id: int) -> Optional[User]:
-        with db_session() as connection:
+        with database.db_session() as connection:
             row = connection.execute(
-                "SELECT id, email, created_at FROM users WHERE id = ?",
+                "SELECT id, email, created_at FROM users WHERE id = %s",
                 (user_id,),
             ).fetchone()
-        return User(**dict(row)) if row else None
+        if row is None:
+            return None
+        return User(**{**row, "created_at": row["created_at"].isoformat()})
 
     def list_all_ids(self) -> list[int]:
-        with db_session() as connection:
+        with database.db_session() as connection:
             rows = connection.execute("SELECT id FROM users ORDER BY id ASC").fetchall()
         return [row["id"] for row in rows]

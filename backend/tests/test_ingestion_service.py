@@ -1,12 +1,24 @@
 from datetime import datetime, timedelta, timezone
 
 from app.core.security import hash_password
+from app.ingestion.models import JobCandidate
 from app.ingestion.services.ingestion_service import IngestionService
 from app.models.ingestion_run import IngestionRun
 from app.models.ingestion_settings import IngestionSettings
+from app.models.preference import PreferenceCreate
 from app.repositories.ingestion_run_repository import IngestionRunRepository
 from app.repositories.ingestion_settings_repository import IngestionSettingsRepository
+from app.repositories.job_repository import JobRepository
+from app.repositories.preference_repository import PreferenceRepository
 from app.repositories.user_repository import UserRepository
+
+
+class _SpyEmbeddingService:
+    def __init__(self):
+        self.embedded_batches: list[list] = []
+
+    def embed_jobs(self, jobs):
+        self.embedded_batches.append(list(jobs))
 
 
 def test_run_for_user_with_all_sources_disabled_records_a_successful_run(test_user):
@@ -113,3 +125,31 @@ def test_run_all_users_continues_after_one_users_run_fails(test_user, tmp_db, mo
 
     assert summary["users_run"] == 1
     assert summary["per_user"][0]["user_id"] == other_user.id
+
+
+def test_run_for_user_embeds_each_genuinely_new_job(test_user, monkeypatch):
+    PreferenceRepository().create_preference(test_user.id, PreferenceCreate(keyword="backend", kind="include"))
+    candidate = JobCandidate(title="Backend Engineer", company="Acme", location="Remote", link="https://x.com/1", source="rss")
+    monkeypatch.setattr(
+        "app.ingestion.adapters.safe_registry.SafeAdapterRegistry.fetch_all", lambda self: [candidate]
+    )
+    spy = _SpyEmbeddingService()
+
+    result = IngestionService(embedding_service=spy).run_for_user(test_user.id)
+
+    assert result["new"] == 1
+    assert len(spy.embedded_batches) == 1
+    embedded_jobs = spy.embedded_batches[0]
+    assert len(embedded_jobs) == 1
+    assert embedded_jobs[0].title == "Backend Engineer"
+    assert embedded_jobs[0].id is not None
+    assert JobRepository().list_jobs(test_user.id)[0].link == "https://x.com/1"
+
+
+def test_run_for_user_does_not_embed_when_nothing_new(test_user, monkeypatch):
+    monkeypatch.setattr("app.ingestion.adapters.safe_registry.SafeAdapterRegistry.fetch_all", lambda self: [])
+    spy = _SpyEmbeddingService()
+
+    IngestionService(embedding_service=spy).run_for_user(test_user.id)
+
+    assert spy.embedded_batches == [[]]

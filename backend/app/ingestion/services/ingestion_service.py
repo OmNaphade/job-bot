@@ -4,6 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from app.ingestion.adapters.safe_registry import SafeAdapterRegistry
 from app.ingestion.services.dedup_service import DedupService
+from app.ingestion.services.embedding_service import EmbeddingService
 from app.ingestion.services.matcher_service import MatcherService
 from app.ingestion.services.notification_service import NotificationService
 from app.models.ingestion_run import IngestionRun
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 
 class IngestionService:
-    def __init__(self) -> None:
+    def __init__(self, embedding_service: EmbeddingService | None = None) -> None:
         self.settings_service = IngestionSettingsService()
         self.preference_service = PreferenceService()
         self.notification_settings_service = NotificationSettingsService()
@@ -26,6 +27,7 @@ class IngestionService:
         self.repository = JobRepository()
         self.run_repository = IngestionRunRepository()
         self.user_repository = UserRepository()
+        self.embedding_service = embedding_service or EmbeddingService()
 
     def run_for_user(self, user_id: int) -> dict:
         """Runs one ingestion pass for a single user: fetch that user's enabled
@@ -47,11 +49,17 @@ class IngestionService:
             matched_by_source = dict(Counter(candidate.source for candidate in matched))
             deduped = self.dedup.filter_new(matched)
 
-            new_candidates = [
-                candidate
-                for candidate in deduped
-                if self.repository.create_job_if_new(user_id, candidate) is not None
-            ]
+            new_jobs = []
+            for candidate in deduped:
+                job = self.repository.create_job_if_new(user_id, candidate)
+                if job is not None:
+                    new_jobs.append(job)
+            new_candidates = new_jobs
+            # Embeds each genuinely-new job once, right here at ingestion time --
+            # see EmbeddingService for why (never re-embedded per match query).
+            # A per-job failure is caught inside embed_jobs() and never aborts
+            # the run; the job still gets notified/etc below regardless.
+            self.embedding_service.embed_jobs(new_jobs)
             # Includes this run's new matches plus anything left over from a run
             # whose delivery failed partway through -- see JobRepository.list_unnotified.
             pending_notifications = self.repository.list_unnotified(user_id)

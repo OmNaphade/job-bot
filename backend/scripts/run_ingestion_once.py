@@ -9,7 +9,7 @@ Run from the `backend/` directory: `python -m scripts.run_ingestion_once`
 import logging
 import os
 
-from app.db.database import init_db
+from app.db import database
 from app.ingestion.services.ingestion_service import IngestionService
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -25,7 +25,10 @@ def _write_step_summary(markdown: str) -> None:
 
 
 def main() -> None:
-    init_db()
+    # Schema is applied by `alembic upgrade head` as its own deploy step (see
+    # deploy/oci_deploy_db.sh), not here -- this just fails fast if the DB is
+    # unreachable rather than partway through the first query.
+    database.get_pool().wait()
     logger = logging.getLogger(__name__)
 
     try:

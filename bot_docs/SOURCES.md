@@ -1,6 +1,6 @@
 # Setting up the real sources
 
-Everything is disabled by default. Nothing runs against a live source until you turn it on **and** provide the matching credentials/URL below. No secret values live in this repo or in this doc — only variable names, what they're for, and non-secret defaults. Real values go in `backend/.env` (gitignored) locally, or GitHub repository secrets for the scheduled runner.
+Everything is disabled by default. Nothing runs against a live source until you turn it on **and** provide the matching credentials/URL below. No secret values live in this repo or in this doc — only variable names, what they're for, and non-secret defaults. Real values go in `backend/.env` (gitignored) locally, or on VM2 in production, since that's where the ingestion worker runs — see `bot_docs/OPERATIONS.md`'s "Deploying to OCI".
 
 ## Telegram / Slack / Discord alerts (per-account, not env vars)
 

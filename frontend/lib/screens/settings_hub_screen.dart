@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:job_alert_frontend/screens/config_screen.dart';
 import 'package:job_alert_frontend/screens/keyword_config_screen.dart';
 import 'package:job_alert_frontend/screens/notification_settings_screen.dart';
+import 'package:job_alert_frontend/screens/resume_upload_screen.dart';
 import 'package:job_alert_frontend/screens/run_history_screen.dart';
 import 'package:job_alert_frontend/screens/server_settings_screen.dart';
 import 'package:job_alert_frontend/services/auth_service.dart';
@@ -42,6 +43,12 @@ class SettingsHubScreen extends StatelessWidget {
                 ],
               ),
             ),
+          _SettingsTile(
+            icon: Icons.badge_outlined,
+            title: 'Resume',
+            subtitle: 'Upload a resume for personalized job matches',
+            onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const ResumeUploadScreen())),
+          ),
           _SettingsTile(
             icon: Icons.tune_rounded,
             title: 'Ingestion sources',

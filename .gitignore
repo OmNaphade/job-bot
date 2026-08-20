@@ -2,9 +2,11 @@ backend/.venv/
 backend/**/__pycache__/
 backend/.pytest_cache/
 backend/.env
-# job_alert.db is intentionally TRACKED -- the scheduled GitHub Actions workflow
-# commits it back after each run so state (seen jobs, settings, preferences)
-# persists across ephemeral runners. See .github/workflows/ingest.yml.
+# job_alert.db is now legacy -- Postgres (DATABASE_URL) is the real source of
+# truth, see backend/scripts/migrate_sqlite_to_postgres.py and
+# bot_docs/ARCHITECTURE.md. Untracked going forward; the file itself was left
+# in git history rather than rewritten out of it.
+backend/job_alert.db
 frontend/.dart_tool/
 frontend/build/
 frontend/.flutter-plugins

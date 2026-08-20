@@ -20,7 +20,12 @@ def _env(name: str, default: str | None = None) -> str | None:
 @dataclass(frozen=True)
 class Settings:
     app_name: str = "Job Alert API"
-    db_path: str = "job_alert.db"
+
+    # Postgres connection string, e.g. postgresql://user:pass@host:5432/job_alert.
+    # No default -- every environment (local dev via docker-compose, tests, both
+    # VMs) must set this explicitly rather than silently falling back to
+    # something that looks plausible but points at the wrong database.
+    database_url: str = field(default_factory=lambda: _env("DATABASE_URL") or "")
 
     # Required on POST /auth/signup when set (unset = open signup). Every other
     # route requires a real per-user session token instead (see
@@ -31,6 +36,35 @@ class Settings:
 
     # Session token lifetime (see app/core/security.py::create_session).
     session_ttl_days: int = field(default_factory=lambda: int(_env("SESSION_TTL_DAYS", "30")))
+
+    # CORS origin allowed to call the API cross-origin (native Flutter builds --
+    # Windows/Android/iOS -- hit the API directly rather than same-origin
+    # through nginx the way the web build does). "*" is the permissive local-
+    # dev default; set to the real deployed origin (e.g.
+    # https://job-alert-app.duckdns.org) once this is reachable beyond
+    # 127.0.0.1 -- see app/middleware.py and bot_docs/OPERATIONS.md.
+    allowed_origin: str = field(default_factory=lambda: _env("ALLOWED_ORIGIN", "*"))
+
+    # Google Gemini API key (aistudio.google.com, free tier) -- used for both
+    # resume structured-extraction (app/ai/gemini_client.py) and embeddings
+    # (resume profiles + job postings, for GET /matches). No default: resume
+    # upload fails loudly with a clear error if this is unset, rather than
+    # every call quietly failing deep inside the AI client.
+    google_api_key: str | None = field(default_factory=lambda: _env("GOOGLE_API_KEY"))
+    # Model ids are env-driven so they're bumpable without a code change.
+    gemini_extraction_model: str = field(default_factory=lambda: _env("GEMINI_EXTRACTION_MODEL", "gemini-2.5-flash"))
+    # 768-dim to match the `vector(768)` columns in 0001_initial_schema.py.
+    gemini_embedding_model: str = field(default_factory=lambda: _env("GEMINI_EMBEDDING_MODEL", "text-embedding-004"))
+    # Per-user resume uploads/day -- protects the free Gemini quota from being
+    # exhausted by one account re-uploading in a loop (see ResumeService).
+    resume_upload_daily_cap: int = field(default_factory=lambda: int(_env("RESUME_UPLOAD_DAILY_CAP", "5")))
+
+    # Per-IP limits on account creation/login (see app/core/rate_limit.py) --
+    # signup is open (no invite code required by default now), so these are
+    # what stands between a public deployment and someone scripting account
+    # creation or password-guessing. `limits`-library syntax, e.g. "5/hour".
+    signup_rate_limit: str = field(default_factory=lambda: _env("SIGNUP_RATE_LIMIT", "5/hour"))
+    login_rate_limit: str = field(default_factory=lambda: _env("LOGIN_RATE_LIMIT", "10/15minute"))
 
     alert_email_address: str | None = field(default_factory=lambda: _env("ALERT_EMAIL_ADDRESS"))
     alert_email_app_password: str | None = field(default_factory=lambda: _env("ALERT_EMAIL_APP_PASSWORD"))

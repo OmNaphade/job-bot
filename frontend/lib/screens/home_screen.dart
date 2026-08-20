@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:job_alert_frontend/screens/matches_tab.dart';
 import 'package:job_alert_frontend/screens/settings_hub_screen.dart';
 import 'package:job_alert_frontend/services/api_service.dart';
 import 'package:job_alert_frontend/theme/app_colors.dart';
@@ -13,6 +14,68 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  int _tabIndex = 0;
+  final _jobsTabKey = GlobalKey<_JobsTabState>();
+
+  static const _titles = ['Job Alerts', 'For You'];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(_titles[_tabIndex]),
+        actions: [
+          IconButton(
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () async {
+              await Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SettingsHubScreen()),
+              );
+              // Settings screens (server URL, sources, keywords, resume) can
+              // all change what the current tab should show -- just reload
+              // rather than tracking which sub-screen actually changed
+              // something.
+              _jobsTabKey.currentState?.reload();
+            },
+          ),
+          const SizedBox(width: 8),
+        ],
+      ),
+      body: IndexedStack(
+        index: _tabIndex,
+        children: [
+          _JobsTab(key: _jobsTabKey),
+          const MatchesTab(),
+        ],
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tabIndex,
+        onDestinationSelected: (index) => setState(() => _tabIndex = index),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.work_outline_rounded), selectedIcon: Icon(Icons.work_rounded), label: 'Jobs'),
+          NavigationDestination(
+            icon: Icon(Icons.auto_awesome_outlined),
+            selectedIcon: Icon(Icons.auto_awesome_rounded),
+            label: 'For You',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Body-only widget (no Scaffold/AppBar -- HomeScreen owns those) -- was
+/// HomeScreen's entire body before the "For You" tab (MatchesTab) was added
+/// alongside it.
+class _JobsTab extends StatefulWidget {
+  const _JobsTab({super.key});
+
+  @override
+  State<_JobsTab> createState() => _JobsTabState();
+}
+
+class _JobsTabState extends State<_JobsTab> {
   final ApiService _apiService = ApiService.instance;
   late Future<List<dynamic>> _jobsFuture;
   bool _runningIngestion = false;
@@ -23,110 +86,89 @@ class _HomeScreenState extends State<HomeScreen> {
     _jobsFuture = _apiService.fetchJobs();
   }
 
+  void reload() {
+    setState(() => _jobsFuture = _apiService.fetchJobs());
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Job Alerts'),
-        actions: [
-          IconButton(
-            tooltip: 'Settings',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () async {
-              await Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const SettingsHubScreen()),
-              );
-              // Settings screens (server URL, sources, keywords) can all
-              // change what the job list should show -- just reload rather
-              // than tracking which sub-screen actually changed something.
-              _reload();
-            },
+    return RefreshIndicator(
+      onRefresh: () async {
+        final future = _apiService.fetchJobs();
+        setState(() => _jobsFuture = future);
+        await future;
+      },
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: _runningIngestion ? null : _runIngestion,
+                icon: _runningIngestion
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      )
+                    : const Icon(Icons.sync_rounded),
+                label: Text(_runningIngestion ? 'Checking now…' : 'Check for new jobs now'),
+              ),
+            ),
           ),
-          const SizedBox(width: 8),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.bolt_rounded, size: 16, color: colorScheme.tertiary),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'The bot also checks automatically in the background — this is just for right now.',
+                    style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: FutureBuilder<List<dynamic>>(
+              future: _jobsFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return const Center(child: CircularProgressIndicator());
+                }
+                if (snapshot.hasError) {
+                  return _ErrorState(
+                    error: snapshot.error.toString(),
+                    onRetry: reload,
+                    onOpenServerSettings: () async {
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const SettingsHubScreen()),
+                      );
+                      reload();
+                    },
+                  );
+                }
+                final jobs = snapshot.data ?? [];
+                if (jobs.isEmpty) {
+                  return const _EmptyState();
+                }
+                return ListView.builder(
+                  padding: const EdgeInsets.only(bottom: 88, top: 4),
+                  itemCount: jobs.length,
+                  itemBuilder: (context, index) => _JobCard(job: jobs[index] as Map<String, dynamic>),
+                );
+              },
+            ),
+          ),
         ],
       ),
-      body: RefreshIndicator(
-        onRefresh: () async {
-          final future = _apiService.fetchJobs();
-          setState(() => _jobsFuture = future);
-          await future;
-        },
-        child: Column(
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-              child: SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  onPressed: _runningIngestion ? null : _runIngestion,
-                  icon: _runningIngestion
-                      ? const SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                        )
-                      : const Icon(Icons.sync_rounded),
-                  label: Text(_runningIngestion ? 'Checking now…' : 'Check for new jobs now'),
-                ),
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.bolt_rounded, size: 16, color: colorScheme.tertiary),
-                  const SizedBox(width: 4),
-                  Expanded(
-                    child: Text(
-                      'The bot also checks automatically in the background — this is just for right now.',
-                      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: FutureBuilder<List<dynamic>>(
-                future: _jobsFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return _ErrorState(
-                      error: snapshot.error.toString(),
-                      onRetry: _reload,
-                      onOpenServerSettings: () async {
-                        await Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const SettingsHubScreen()),
-                        );
-                        _reload();
-                      },
-                    );
-                  }
-                  final jobs = snapshot.data ?? [];
-                  if (jobs.isEmpty) {
-                    return const _EmptyState();
-                  }
-                  return ListView.builder(
-                    padding: const EdgeInsets.only(bottom: 88, top: 4),
-                    itemCount: jobs.length,
-                    itemBuilder: (context, index) => _JobCard(job: jobs[index] as Map<String, dynamic>),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
     );
-  }
-
-  void _reload() {
-    setState(() => _jobsFuture = _apiService.fetchJobs());
   }
 
   Future<void> _runIngestion() async {
@@ -141,7 +183,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ),
       );
-      _reload();
+      reload();
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to run ingestion: $error')));

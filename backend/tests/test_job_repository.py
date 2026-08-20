@@ -147,3 +147,43 @@ def test_list_unnotified_is_bounded_and_returns_oldest_first(test_user):
         "https://example.com/jobs/1",
         "https://example.com/jobs/2",
     ]
+
+
+def test_set_embedding_marks_the_job_no_longer_missing(test_user):
+    repo = JobRepository()
+    job = repo.create_job_if_new(
+        test_user.id,
+        JobCandidate(title="Backend Engineer", company="Acme", location="Remote", link="https://example.com/jobs/1", source="rss"),
+    )
+
+    repo.set_embedding(job.id, [0.1] * 768, "text-embedding-004")
+
+    assert job.id not in {j.id for j in repo.list_jobs_missing_embedding()}
+
+
+def test_list_jobs_missing_embedding_returns_jobs_without_one(test_user):
+    repo = JobRepository()
+    job = repo.create_job_if_new(
+        test_user.id,
+        JobCandidate(title="Backend Engineer", company="Acme", location="Remote", link="https://example.com/jobs/1", source="rss"),
+    )
+
+    missing = repo.list_jobs_missing_embedding()
+
+    assert job.id in {j.id for j in missing}
+
+
+def test_list_jobs_missing_embedding_respects_after_id_cursor(test_user):
+    repo = JobRepository()
+    first = repo.create_job_if_new(
+        test_user.id,
+        JobCandidate(title="Backend Engineer", company="Acme", location="Remote", link="https://example.com/jobs/1", source="rss"),
+    )
+    second = repo.create_job_if_new(
+        test_user.id,
+        JobCandidate(title="Backend Engineer", company="Acme", location="Remote", link="https://example.com/jobs/2", source="rss"),
+    )
+
+    missing = repo.list_jobs_missing_embedding(after_id=first.id)
+
+    assert {j.id for j in missing} == {second.id}

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 import 'package:job_alert_frontend/services/auth_service.dart';
 import 'package:job_alert_frontend/services/server_config.dart';
 
@@ -9,6 +10,7 @@ class ApiService {
   static final ApiService instance = ApiService._internal();
 
   static const _timeout = Duration(seconds: 10);
+  static final _pdfMediaType = MediaType('application', 'pdf');
 
   String baseUrl = ServerConfig.defaultBaseUrl();
 
@@ -136,6 +138,40 @@ class ApiService {
 
   Future<List<dynamic>> fetchIngestionRuns({int limit = 20}) async {
     final response = await _get('/ingestion/runs?limit=$limit');
+    return jsonDecode(response.body) as List<dynamic>;
+  }
+
+  // --- Resume / personalization ---
+
+  /// Uploads/replaces the caller's resume. Multipart, not JSON, since it's a
+  /// file -- the other `_post`/`_get` helpers assume a JSON body throughout.
+  /// Returns the parsed profile on success.
+  Future<Map<String, dynamic>> uploadResume(List<int> bytes, String filename) async {
+    final request = http.MultipartRequest('POST', Uri.parse('$baseUrl/resume'))
+      ..headers.addAll(_headers())
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename, contentType: _pdfMediaType));
+    final streamed = await request.send().timeout(const Duration(seconds: 60));
+    final response = await http.Response.fromStream(streamed);
+    _checkOk(response, 'upload resume');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Null means no resume uploaded yet -- not an error state.
+  Future<Map<String, dynamic>?> fetchResumeProfile() async {
+    final response = await _get('/resume');
+    final body = jsonDecode(response.body);
+    return body == null ? null : body as Map<String, dynamic>;
+  }
+
+  Future<void> deleteResume() async {
+    final response = await http.delete(Uri.parse('$baseUrl/resume'), headers: _headers()).timeout(_timeout);
+    _checkOk(response, 'delete resume');
+  }
+
+  /// Ranked jobs for the caller's uploaded resume, best match first. Empty
+  /// (not an error) if no resume has been uploaded yet.
+  Future<List<dynamic>> fetchMatches({int limit = 20, int offset = 0}) async {
+    final response = await _get('/matches?limit=$limit&offset=$offset');
     return jsonDecode(response.body) as List<dynamic>;
   }
 

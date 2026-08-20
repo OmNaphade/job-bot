@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Iterable, Set
 
-from app.db.database import db_session
+from app.db import database
 
 
 class ProcessedAlertEmailRepository:
@@ -25,11 +25,11 @@ class ProcessedAlertEmailRepository:
         ids = [message_id for message_id in message_ids if message_id]
         if not ids:
             return set()
-        placeholders = ",".join("?" for _ in ids)
-        with db_session() as connection:
+        placeholders = ",".join("%s" for _ in ids)
+        with database.db_session() as connection:
             rows = connection.execute(
                 f"SELECT message_id FROM processed_alert_emails "
-                f"WHERE user_id = ? AND source = ? AND message_id IN ({placeholders})",
+                f"WHERE user_id = %s AND source = %s AND message_id IN ({placeholders})",
                 (user_id, source, *ids),
             ).fetchall()
         already_processed = {row["message_id"] for row in rows}
@@ -39,10 +39,11 @@ class ProcessedAlertEmailRepository:
         ids = [message_id for message_id in message_ids if message_id]
         if not ids:
             return
-        now = datetime.now(timezone.utc).isoformat()
-        with db_session() as connection:
-            connection.executemany(
-                "INSERT OR IGNORE INTO processed_alert_emails (message_id, source, user_id, processed_at) "
-                "VALUES (?, ?, ?, ?)",
-                [(message_id, source, user_id, now) for message_id in ids],
-            )
+        now = datetime.now(timezone.utc)
+        with database.db_session() as connection:
+            with connection.cursor() as cursor:
+                cursor.executemany(
+                    "INSERT INTO processed_alert_emails (message_id, source, user_id, processed_at) "
+                    "VALUES (%s, %s, %s, %s) ON CONFLICT (message_id, source, user_id) DO NOTHING",
+                    [(message_id, source, user_id, now) for message_id in ids],
+                )
