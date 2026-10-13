@@ -1,6 +1,6 @@
-requests>=2.31,<3
-beautifulsoup4>=4.12,<5
-feedparser>=6.0,<7
-PyYAML>=6.0,<7
-python-dotenv>=1.0,<2
-tzdata>=2024.1
+requests>=2.34.2,<3
+beautifulsoup4>=4.15.0,<5
+feedparser>=6.0.14,<7
+PyYAML>=6.0.3,<7
+python-dotenv>=1.2.4,<2
+tzdata>=2026.5
