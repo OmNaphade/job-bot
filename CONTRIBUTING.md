@@ -7,7 +7,7 @@
 | `main` | **Production.** The scheduled GitHub Actions run executes whatever is on `main`. | Release merges from `develop` only. |
 | `develop` | Integration. Everything lands here first and is tried against live sources before release. | Feature/fix branches via pull request. |
 | `feature/*`, `fix/*` | One change each, branched from `develop`. | You. |
-| `state` | Machine-written memory of what was already alerted. Never merge it. | The workflow. |
+| `state` | Machine-written memory of what was already alerted, plus `runs.md` (one row and one commit per run). Never merge it. | The workflow. |
 
 ```text
 feature/x ──PR──► develop ──PR (release)──► main ──tag vX.Y.Z──► GitHub Release
