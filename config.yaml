@@ -1,0 +1,297 @@
+# Everything you tune lives here. Secrets (Telegram token, email password, API keys) live in .env.
+# Test any change without sending anything:   python -m jobalert run --dry-run
+#
+# Profile: fresher (0-1 yr), anywhere in India, Java/Spring Boot backend + full stack + DevOps/cloud.
+
+# ---------------------------------------------------------------------------
+# What you want
+# ---------------------------------------------------------------------------
+keywords:
+  # A job must mention at least one of these in its title (or its skills/tags). Whole-word match,
+  # case-insensitive: "java" will not match "javascript". Sources that run your own search
+  # (LinkedIn, email alerts) skip this check.
+  include:
+    # Java / backend
+    - java
+    - spring boot
+    - spring framework
+    - microservices
+    - backend
+    - back end
+    - rest api
+    - kafka
+    # Full stack
+    - full stack
+    - fullstack
+    - react
+    - react.js
+    - reactjs
+    - angular
+    - mern
+    # DevOps / cloud
+    - devops
+    - kubernetes
+    - docker
+    - cloud engineer
+    - site reliability
+    - sre
+    - aws
+    # Generic entry-level titles
+    - software engineer
+    - software developer
+    - sde
+  # Titles that don't name a technology ("Associate Engineer", "Analyst"...) are accepted only when
+  # they match one of these AND the job description / skills list proves it is a tech role: at least
+  # run.min_tech_evidence matches from include + skills, at least one of them an include term. So
+  # "Associate Engineer" whose description says Java + Spring Boot gets in, "Business Analyst" doesn't.
+  generic_titles:
+    - associate engineer
+    - associate software engineer
+    - associate developer
+    - associate analyst
+    - associate consultant
+    - graduate engineer
+    - engineer trainee
+    - trainee engineer
+    - software trainee
+    - programmer analyst
+    - technology analyst
+    - technical analyst
+    - systems engineer
+    - system engineer
+    - application developer
+    - application engineer
+    - analyst
+    - engineer
+    - developer
+    - programmer
+    - consultant
+    - technologist
+  # Any of these in the TITLE drops the job.
+  exclude:
+    - senior
+    - sr
+    - lead
+    - manager
+    - principal
+    - staff
+    - architect
+    - director
+    - head
+    - vp
+    - avp
+    - vice president
+    - ii        # "Software Engineer II/III/IV" are not entry level
+    - iii
+    - iv
+    - experienced
+    # other stacks / not software development
+    - php
+    - .net
+    - dotnet
+    - android
+    - ios
+    - react native
+    - salesforce
+    - sap
+    - qa
+    - tester
+    - testing
+    - asp.net
+    - golang
+    # senior levels written other ways
+    - sse
+    - sde 2
+    - sde 3
+    - sde2
+    - sde3
+    - mid-level
+    - l3
+    - l4
+    - l5
+  # Extra score if present (title or skills). Boosted jobs sort first and get the fire emoji.
+  boost:
+    - fresher
+    - freshers
+    - graduate
+    - entry level
+    - trainee
+    - junior
+    - associate
+    - intern
+    - spring boot
+    - kafka
+    - kubernetes
+
+  # Ranking only (+1 each, max 5, found in the title or the portal's skills list). They never make a
+  # job qualify on their own, so generic ones like SQL or Git can't let in unrelated roles.
+  skills:
+    - core java
+    - spring security
+    - spring data jpa
+    - hibernate
+    - jpa
+    - rest apis
+    - junit
+    - mockito
+    - maven
+    - jenkins
+    - ci/cd
+    - docker
+    - aws
+    - azure
+    - postgresql
+    - mysql
+    - sql
+    - javascript
+    - typescript
+    - html5
+    - css3
+    - git
+    - linux
+    - jwt
+    - oauth
+    - agile
+    - unit testing
+
+location:
+  # For sources where you did NOT choose a place (remote boards, company boards, Unstop, Telegram
+  # channels) the location must mention one of these. Unknown locations are let through.
+  allow:
+    - india
+    - remote
+    - anywhere
+    - worldwide
+    - hybrid
+    - apac
+    - asia
+    - pune
+    - mumbai
+    - bengaluru
+    - bangalore
+    - hyderabad
+    - delhi
+    - gurgaon
+    - gurugram
+    - noida
+    - chennai
+    - kolkata
+    - ahmedabad
+    - kochi
+    - maharashtra
+  # Small score bonus: you're in Pune, and remote works from anywhere.
+  preferred: [pune, remote]
+
+run:
+  max_age_days: 3              # ignore jobs posted longer ago than this (when the date is known)
+  max_experience_years: 1      # ignore jobs whose MINIMUM experience is above this (read from the
+                               # source, or from "2-4 yrs" / "3+ years" in the title)
+  max_per_run: 40              # cap per run; anything beyond is sent on the next run
+  min_tech_evidence: 2         # for generic titles: matches needed in the description/skills (see generic_titles)
+  max_detail_fetches: 25       # LinkedIn job pages opened per run (the rest wait for the next run)
+  detail_time_budget_seconds: 150   # ...and at most this long spent reading them
+  first_run_limit: 10          # on the very first run only, alert on the best N and quietly remember the rest
+
+notify:
+  individual_limit: 8          # up to this many get their own message with an Apply button; the rest go in a compact digest
+  hot_score: 8                 # score at or above this gets the fire emoji
+
+# ---------------------------------------------------------------------------
+# Where jobs come from. Remove a block (or set enabled: false) to turn it off.
+# ---------------------------------------------------------------------------
+sources:
+
+  # LinkedIn search (public logged-out endpoint, no account). Works well from a home connection;
+  # GitHub's servers get blocked now and then, in which case use email_alerts below.
+  linkedin:
+    enabled: true
+    posted_within_hours: 24
+    pages: 1                   # 25 results per page
+    min_interval_minutes: 50   # LinkedIn is searched at most this often (~hourly) however often the job runs
+    fetch_details: true        # open each new job to read its description: checks experience and tech
+                               # stack for real, and lets generic titles in. Set false to skip.
+    experience: [internship, entry]   # internship | entry | associate | mid_senior | director | executive
+    # work_type: [remote, hybrid]     # onsite | remote | hybrid
+    searches:                  # each one is a separate request (~4s apart), so keep this list focused
+      - { keywords: "java full stack developer",       location: "India" }
+      - { keywords: "spring boot developer",           location: "India" }
+      - { keywords: "java backend developer",          location: "India" }
+      - { keywords: "java microservices",              location: "India" }
+      - { keywords: "java developer",                  location: "India" }
+      - { keywords: "java developer",                  location: "Pune, Maharashtra, India" }
+      # titles without "Java" in them: the description check keeps only the real Java roles
+      - { keywords: "associate software engineer java", location: "India" }
+      - { keywords: "associate engineer java",          location: "India" }
+      - { keywords: "programmer analyst java",          location: "India" }
+      - { keywords: "technology analyst java",          location: "India" }
+      - { keywords: "devops engineer",                  location: "India" }
+      - { keywords: "cloud engineer",                   location: "India" }
+
+  # LinkedIn / Naukri / Indeed saved-search emails read over IMAP: the dependable way to get Naukri
+  # (it blocks bots with a captcha) and a backup for LinkedIn. Needs ALERT_EMAIL_* in .env. Create
+  # job alerts on each site, set them to email you, and use "mailboxes" if a Gmail filter files
+  # them under a label (the label must have "Show in IMAP" turned on).
+  email_alerts:
+    enabled: true
+    lookback_days: 3
+    linkedin: { mailboxes: [INBOX, "Linkedin Alerts"] }
+    naukri:   { mailboxes: [INBOX, "Naukri Alerts"] }
+    indeed:   { mailboxes: [INBOX, "Indeed Alerts"] }
+
+  # Foundit (ex-Monster India). Gives experience range, salary and skills.
+  foundit:
+    enabled: true
+    min_interval_minutes: 50   # one round of ~14 queries about hourly, not on every run
+    locations: India           # e.g. "Pune" for one city, or "Pune,Mumbai"
+    limit: 40
+    queries:
+      - java full stack developer
+      - java spring boot developer
+      - spring boot microservices developer
+      - java backend developer
+      - java developer microservices
+      - java react developer
+      - software engineer java
+      - associate software engineer java
+      - associate engineer java
+      - programmer analyst java
+      - technology analyst java
+      - java fresher
+      - devops engineer
+      - cloud engineer
+
+  # Unstop: jobs and internships, strong for freshers. Cannot be searched; filtered by your keywords.
+  unstop:
+    enabled: true
+
+  # Free API keys, set in .env: Adzuna (developer.adzuna.com), Jooble (jooble.org/api/about).
+  # Skipped automatically until the keys exist.
+  adzuna:
+    enabled: true
+    country: in
+    where: ""                  # empty = all of India
+    queries: [java developer, spring boot developer, associate software engineer java, devops engineer]
+  jooble:
+    enabled: true
+    location: India
+    queries: [java developer, spring boot developer, associate software engineer java, devops engineer]
+
+  # Remote-job feeds (no keys). Handy for remote roles open to India; the location filter above
+  # drops "US only" style postings. Choose a subset with:  boards: [remotive, himalayas]
+  remote_boards:
+    enabled: true
+
+  # Straight from company career pages, usually before the big boards have them. Add any company
+  # by the token in its careers URL: boards.greenhouse.io/<token>, jobs.lever.co/<slug>,
+  # jobs.ashbyhq.com/<name>. These ones are verified to have India openings.
+  company_boards:
+    enabled: true
+    greenhouse: [databricks, okta, rubrik, stripe, gitlab, elastic, twilio, mongodb, groww, datadog]
+    lever: [meesho, zeta, paytm, cred]
+    ashby: [sarvam, openai, snowflake]
+
+  # Public Telegram job channels, read through their web preview: add channel usernames
+  # (the part after t.me/). Off until you add some.
+  telegram_channels:
+    enabled: true
+    channels: []

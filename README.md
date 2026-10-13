@@ -1,175 +1,92 @@
-# Job Alert Platform
+# Job Alert
 
-A continuously-running, multi-user job-monitoring and personalization platform with a FastAPI backend and a Flutter dashboard. It polls job sources on a schedule, matches new postings against your saved keyword preferences, pushes a Telegram alert the moment something new matches, and — upload a resume — extracts your skills/titles/experience via Gemini to personalize what you see, without you needing to open the app.
+A small Python script that checks job sources on a schedule and sends new matches to your Telegram bot. No server, no database, no app: a config file, a `.env` for secrets, and a scheduler (GitHub Actions or Windows Task Scheduler).
 
-[![CI](https://github.com/OmNaphade/job-bot/actions/workflows/ci.yml/badge.svg)](https://github.com/OmNaphade/job-bot/actions/workflows/ci.yml)
+```
+sources ──► filter + score ──► dedupe against state.json ──► Telegram
+```
 
-## Table of Contents
+- **Fresh only.** Jobs older than 3 days, senior titles, jobs asking for more experience than you have, and wrong locations are dropped.
+- **Best first.** Each job gets a score (keyword hits in the title, boost words, your city, how new it is). Top matches arrive as their own message with an *Apply* button; the rest as a compact digest.
+- **No repeats.** The same role seen on LinkedIn and Foundit is alerted once. If Telegram is down, unsent jobs are retried next run.
+- **Tells you when a source breaks.** After 4 failed runs in a row you get one Telegram warning.
 
-- [Job Alert Platform](#job-alert-platform)
-  - [Table of Contents](#table-of-contents)
-  - [About](#about)
-  - [Built With](#built-with)
-  - [Features](#features)
-  - [Demo](#demo)
-  - [Getting Started](#getting-started)
-    - [Prerequisites](#prerequisites)
-    - [Installation](#installation)
-    - [Configuration](#configuration)
-  - [Usage](#usage)
-    - [Backend](#backend)
-    - [Frontend (dashboard + accounts)](#frontend-dashboard--accounts)
-  - [Project Structure](#project-structure)
-  - [Documentation](#documentation)
-  - [Testing](#testing)
-  - [Deployment](#deployment)
-  - [Roadmap](#roadmap)
-  - [Security](#security)
-  - [License](#license)
-  - [Contact](#contact)
+## Setup (5 minutes)
 
-## About
-
-Job hunting means checking the same handful of boards over and over. This runs the checking for you: an ingestion pipeline fetches candidate postings from several remote-job RSS/JSON feeds, a handful of documented aggregator job-search APIs, your own LinkedIn/Naukri/Indeed saved-search email alerts, and (optionally) specific companies' own Greenhouse/Lever/Ashby job boards, filters them against include/exclude keywords you set, drops anything already seen, and sends a digest to whichever notification channels (Telegram/Slack/Discord) you've configured for what's actually new. It's designed to never scrape LinkedIn/Naukri/Indeed directly — those three go through your own email alerts instead, everything else uses feeds/APIs meant for exactly this kind of consumption.
-
-It runs unattended on a small always-on deployment (two OCI VMs — see [Deployment](#deployment)), so it doesn't depend on a laptop staying on. The Flutter app is an optional dashboard on top, not a requirement for the bot to function.
-
-## Built With
-
-- Python 3.12 / FastAPI (backend API)
-- Postgres + pgvector (durable state store; migrations via Alembic)
-- A systemd timer on the deployment's worker VM (background polling, every 15 minutes)
-- Google Gemini (free tier) — structured resume extraction + embeddings, via `google-genai`
-- Flutter / Material 3 (dashboard UI)
-- `feedparser` + `requests` (RSS/JSON source adapters); `pypdf` (resume text extraction)
-- GitHub Actions (CI only — tests on every push/PR)
-
-## Features
-
-- Multi-user accounts — email/password signup and login (optionally gated by an invite code), each account with its own keyword preferences, source toggles, notification channels, and job history
-- Polls 6 verified RSS/JSON remote-job feeds (WeWorkRemotely, Himalayas, Remotive, NoDesk, Jobspresso, RemoteOK) plus Arbeitnow's public job-board API — all no-scraping Tier A sources, no key required
-- Optional keyed aggregator job-search APIs — Adzuna, Jooble, and The Muse — for broader, keyword-driven search beyond the fixed remote-job feeds
-- LinkedIn/Naukri/Indeed support via your own saved-search email alerts (IMAP), never talks to linkedin.com/naukri.com/indeed.com directly
-- Optional direct-from-company-site sources — pulls postings straight from a company's own Greenhouse/Lever/Ashby job board API, per company you configure
-- Optional Foundit and Unstop integrations via their own internal (undocumented) APIs — opt-in and more fragile than the other sources, see `bot_docs/SOURCES.md` before enabling
-- Include/exclude keyword matching against title/company/location, each filter optionally scoped to a location
-- Atomic cross-run dedup at the database layer — safe to trigger a manual check anytime, even mid-scheduled-run
-- Telegram digest notification the moment something new matches
-- Runs every 15 minutes on a small always-on deployment — see [Deployment](#deployment)
-- Every ingestion run (success or failure) is recorded with timestamps and aggregate counts; a per-source fetched/matched breakdown is logged and queryable via `GET /ingestion/runs` or the worker's application log
-- Flutter dashboard for stored jobs, on-demand checks, and source/keyword configuration — runs on web, Windows, Android, and iOS, with an in-app, persisted backend-URL setting so a phone on the same Wi-Fi can reach a backend running on your PC (see [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios))
-- Upload a PDF resume and Gemini extracts your skills, titles, years of experience, seniority, locations, and education — only the extracted data is kept, never the original file
-- A "For You" tab ranks your ingested jobs by resume similarity (pgvector cosine distance over Gemini embeddings) — a re-ranking layer on top of your own keyword-filtered jobs, computed once per job at ingestion time, not per request
-- Per-IP rate limiting on signup/login (open signup by default, so this is what actually protects the free Gemini quota and stops scripted account creation)
-
-## Demo
-
-See [bot_docs/README.md](bot_docs/README.md#screenshot) for a screenshot of the dashboard shell.
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.12+
-- Flutter SDK (only needed for the dashboard UI)
-- A Telegram bot token ([@BotFather](https://t.me/BotFather)) — optional, but alerts don't send without it
-- Optionally, a dedicated Gmail account + [App Password](https://myaccount.google.com/apppasswords) if you want LinkedIn/Naukri/Indeed alerts
-
-### Installation
-
-```bash
-git clone https://github.com/OmNaphade/job-bot.git
-cd job-bot/backend
-docker compose up -d              # local Postgres+pgvector, see docker-compose.yml
+```powershell
 python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+.venv\Scripts\pip install -r requirements.txt
+copy .env.example .env          # then fill in TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+.venv\Scripts\python -m jobalert test-telegram      # you should get a message
+.venv\Scripts\python -m jobalert run --dry-run      # shows what would be sent, sends nothing
+.venv\Scripts\python -m jobalert run                # the real thing
 ```
 
-### Configuration
+Getting the Telegram values: create a bot with [@BotFather](https://t.me/BotFather) for the token, message your bot once, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id`.
 
-```bash
-copy .env.example .env
-REM edit .env with real values, then apply the schema:
-python -m alembic upgrade head
+The first real run alerts on your best 10 matches and quietly remembers the rest, so you aren't flooded.
+
+## Tuning
+
+Everything you'd want to change is in [config.yaml](config.yaml): keywords, exclusions, locations, experience cap, which sources are on, LinkedIn searches, Foundit queries, company boards. Run `--dry-run` after editing to see the effect. `--only linkedin` limits a run to one source.
+
+## Running it automatically
+
+**GitHub Actions (nothing needs to stay on).** Push this repo, then add the secrets from `.env` under *Settings → Secrets and variables → Actions* (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and optionally `ALERT_EMAIL_ADDRESS`, `ALERT_EMAIL_APP_PASSWORD`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`, `JOOBLE_API_KEY`). [jobalert.yml](.github/workflows/jobalert.yml) runs at :17 and :47 past every hour (off the busy :00/:30 marks, which GitHub delays) and keeps its memory on a `state` branch. Start it once from the *Actions* tab with *Run workflow*.
+
+Note that `config.yaml` is committed, so on a public repo your search terms and city are visible, and so are the job links on the `state` branch. Secrets are not: they live only in GitHub's encrypted secrets and your local `.env`.
+
+**Windows Task Scheduler (runs while your PC is on).** From an admin prompt:
+
+```powershell
+schtasks /Create /SC MINUTE /MO 30 /TN "JobAlert" /TR "D:\PRACTICE\job-alert\run.bat"
 ```
 
-Notification channels (Telegram/Slack/Discord) aren't env vars — each account sets its own from **Settings → Notifications** in the app after signing up. Every other source (RSS/aggregator-API feeds, LinkedIn/Naukri/Indeed email alerts) has its own env vars with working defaults where a public feed exists — full reference in [bot_docs/SOURCES.md](bot_docs/SOURCES.md).
+Output is appended to `data\run.log`. Run only one of the two schedulers: they keep separate memories and you'd get duplicates.
 
-## Usage
+## Getting LinkedIn and Naukri jobs
 
-### Backend
+Neither site offers a job feed, and both fight bots, so there are three routes, from most to least dependable:
 
-```bash
-uvicorn main:app --reload --host 127.0.0.1 --port 9000
-```
+1. **Saved-search emails (recommended for both).** On each site, create a job alert and set it to email you (LinkedIn: search → *Set alert*; Naukri: *Create job alert* on any search). Point them at a Gmail account, make an [App Password](https://myaccount.google.com/apppasswords), and put it in `.env`. The `email_alerts` source reads those emails over IMAP and turns them into Telegram alerts. This uses the sites' own alert feature, so there is nothing to block. If a Gmail filter files the emails under a label, add the label under `mailboxes` in `config.yaml` (and tick *Show in IMAP* for it in Gmail's label settings).
+   - LinkedIn and Indeed email layouts were checked against real emails. **Naukri's parser has never seen a real job-alert email**, so treat it as unproven: run `python -m jobalert run --only email --dry-run`, and if it logs *no jobs recognised in a naukri email*, that email's layout needs a parser tweak.
+2. **LinkedIn search (`linkedin` source).** Uses the public, logged-out search endpoint with your keywords, locations and experience level, and returns jobs posted in the last 24 hours with their real posting time. It is unofficial: LinkedIn rate-limits it (the script waits and retries) and often blocks GitHub's servers entirely. It works best from your own PC via Task Scheduler. If it is blocked, you get the failure warning and route 1 still covers LinkedIn.
+3. **Naukri directly: not possible.** Its search API answers `recaptcha required` to scripts. Use route 1.
 
-This serves the API only — it doesn't run ingestion itself (see [Deployment](#deployment) for what does). To trigger a pass locally: `python -m scripts.run_ingestion_once` (every due account) or `POST /ingest` (just yours, immediately). A couple of endpoints to try once it's up:
+Other sources that are reliable today and cover a lot of the same ground: **Foundit** (also gives experience and salary), **Unstop**, company career pages (Greenhouse/Lever/Ashby, which often list a role before any job board), Adzuna/Jooble (free keys), and public Telegram job channels (add usernames under `telegram_channels`).
 
-```bash
-curl http://127.0.0.1:9000/health
-curl -X POST http://127.0.0.1:9000/auth/signup -H "Content-Type: application/json" \
-  -d '{"email": "you@example.com", "password": "at-least-8-chars"}'
-# use the returned token as: -H "Authorization: Bearer <token>"
-```
+## Will this get my accounts blocked?
 
-### Frontend (dashboard + accounts)
+The script never logs in to LinkedIn, Naukri, Foundit or Indeed, so there is no account on those sites for them to flag. The only login anywhere is your own Gmail inbox, read-only over IMAP with an app password, which is a normal supported use.
 
-```bash
-cd frontend
-flutter pub get
-flutter run -d chrome    # or: flutter run -d windows
-```
+What a site *can* do to a logged-out client is throttle or block its IP address (you'll see `429` in the log). It is temporary and doesn't touch your account, but it can briefly affect that site in your own browser too. The script is built to stay light:
 
-Points at `127.0.0.1:9000` by default; change it in-app via **Settings → Server connection** if your backend runs elsewhere (e.g. on a phone reaching your PC over LAN), then sign up or log in. Full instructions, including running on a real Android/iOS device, in [frontend/README.md](frontend/README.md) and [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#running-on-a-phone-androidios).
+- LinkedIn is searched at most once an hour and Foundit once an hour (`min_interval_minutes`), however often the scheduler fires.
+- Requests are spaced seconds apart, and LinkedIn job pages are opened only for *new* jobs, capped per run and by a time budget.
+- After two refused searches in a row, or three refused job pages, it stops asking for the rest of that run.
+- Naukri is never contacted at all; it only arrives through the alert emails Naukri sends you.
 
-## Project Structure
+For zero exposure, set `linkedin.enabled: false` and `foundit.enabled: false` in `config.yaml` and rely on the email alerts. You lose speed and coverage, but nothing touches those sites except you.
+
+## Layout
 
 ```
-.
-├── backend/            # FastAPI service + ingestion pipeline (routes, services, repositories, adapters, Alembic migrations)
-├── frontend/           # Flutter dashboard
-├── deploy/             # OCI provisioning scripts (oci_deploy_app.sh for VM1, oci_deploy_db.sh for VM2)
-├── bot_docs/           # architecture, API reference, source setup, deployment docs, screenshots
-├── .github/workflows/  # CI (ci.yml) -- tests only, no scheduled workflow
-└── README.md
+jobalert/
+  __main__.py        CLI: run [--dry-run] [--only X], test-telegram
+  pipeline.py        fetch all sources -> filter -> dedupe -> send -> save state
+  filters.py         include/exclude/location/age/experience rules and scoring
+  notify.py          Telegram messages
+  store.py           state.json (what's been alerted, source failure counts)
+  sources/           one small module per source
+config.yaml          what you want
+tests/               pytest, no network
 ```
 
-## Documentation
+Tests: `pytest -q`.
 
-Architecture, the full API reference, the ingestion flow, data model, per-source setup instructions, and deployment/testing details all live in **[bot_docs/](bot_docs/README.md)** rather than here, to keep this file a quick-start. Start at [bot_docs/README.md](bot_docs/README.md).
+## Troubleshooting
 
-## Testing
-
-```bash
-cd backend && docker compose up -d && pytest -q
-cd frontend && flutter analyze && flutter test
-```
-
-Backend tests run against a real Postgres+pgvector instance (no live network calls to job sources) with per-test transaction rollback isolation — safe anywhere, including CI. Coverage details in [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#testing).
-
-## Deployment
-
-The primary way to run this is **not** locally — it deploys to two small always-free OCI VMs (one running the API + nginx, one running Postgres + a systemd timer that ticks every 15 minutes), so it works with no dependency on any of your devices being online. Provisioning scripts and one-time setup steps are in [bot_docs/OPERATIONS.md](bot_docs/OPERATIONS.md#deploying-to-oci-2-vms).
-
-## Roadmap
-
-- [x] Validate the LinkedIn and Indeed email parsers against a real alert email — both now calibrated against real digests; Naukri's parser is still best-effort (no genuine job-match digest has been available to check it against yet, only newsletter content)
-- [x] Use `preferences.location` in matching — a keyword filter can now be scoped to a location (`POST /preferences` with both `keyword` and `location`); bulk `POST /ingest/keywords` still applies unscoped
-- [x] Surface ingestion run history in the Flutter dashboard — `run_history_screen.dart`, backed by `GET /ingestion/runs`
-- [ ] Pull postings from public Telegram job-posting channels — needs a personal-account MTProto login (Telethon/Pyrogram), not just the bot API, plus a per-channel message parser; scoping, not started
-- [ ] Shared/global job pool for matching, so one user's ingestion enriches everyone's candidate matches instead of each account only matching against jobs its own keyword filters already pulled in — needs splitting `jobs` into a shared postings table plus per-user visibility; real schema work, not started
-
-## Security
-
-No secrets are ever committed — `.env` is gitignored on every machine (local, VM1, VM2). If you find an actual vulnerability, please open an issue rather than a public PR with exploit details.
-
-## License
-
-No license file is set yet — treat this as all-rights-reserved for now.
-
-## Contact
-
-Om Naphade — [github.com/OmNaphade](https://github.com/OmNaphade)
-
-Project repo: [github.com/OmNaphade/job-bot](https://github.com/OmNaphade/job-bot)
+- **`IMAP login failed ... AUTHENTICATIONFAILED`**: the Gmail App Password is wrong or revoked. Create a new one, and make sure IMAP is enabled in Gmail settings.
+- **`linkedin ... 429`**: LinkedIn is throttling you. Fewer `searches`, `pages: 1`, or run from your own PC instead of GitHub.
+- **Nothing arrives**: run with `--dry-run`; the *filtered out* line shows which rule is removing jobs (`too old`, `location`, `excluded keyword`, ...).
+- **Want to re-send everything**: delete `data/state.json` (or the `state` branch on GitHub).
