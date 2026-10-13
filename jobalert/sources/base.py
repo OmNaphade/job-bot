@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Iterable, Optional
+from collections.abc import Callable, Iterable
 
 from ..models import Job
 from ..util import FetchError
@@ -37,7 +37,7 @@ class Source:
         raise NotImplementedError
 
 
-def fetch_many(requests_: Iterable, run: Callable[[object], Optional[list[Job]]], label: str) -> list[Job]:
+def fetch_many(requests_: Iterable, run: Callable[[object], list[Job] | None], label: str) -> list[Job]:
     """Runs `run` once per request, tolerating individual failures.
 
     Raises FetchError only when *every* request failed, so one bad query doesn't mark the whole
@@ -45,7 +45,7 @@ def fetch_many(requests_: Iterable, run: Callable[[object], Optional[list[Job]]]
     """
     jobs: list[Job] = []
     total = failed = 0
-    last_error: Optional[Exception] = None
+    last_error: Exception | None = None
     for item in requests_:
         total += 1
         try:

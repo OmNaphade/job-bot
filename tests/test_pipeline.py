@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -6,7 +6,7 @@ from jobalert import pipeline
 from jobalert.notify import Telegram
 from tests.test_core import FakeSource, make_job
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 CONFIG = {
     "keywords": {"include": ["python"], "exclude": ["senior"]},

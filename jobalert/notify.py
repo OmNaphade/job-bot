@@ -1,8 +1,8 @@
 import html
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Iterator, Optional
+from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import requests
 
@@ -30,10 +30,10 @@ def source_label(source: str) -> str:
     return f"{label} ({detail})" if detail and base in _SHOW_DETAIL else label
 
 
-def _age(posted_at: Optional[datetime]) -> str:
+def _age(posted_at: datetime | None) -> str:
     if not posted_at:
         return ""
-    minutes = max(0, int((datetime.now(timezone.utc) - posted_at).total_seconds() // 60))
+    minutes = max(0, int((datetime.now(UTC) - posted_at).total_seconds() // 60))
     if minutes < 60:
         return f"{max(minutes, 1)}m ago"
     if minutes < 60 * 48:
@@ -128,7 +128,7 @@ class Telegram:
             return False
         return False
 
-    def send_text(self, text: str, *, buttons: Optional[list[list[dict]]] = None) -> bool:
+    def send_text(self, text: str, *, buttons: list[list[dict]] | None = None) -> bool:
         payload: dict = {
             "chat_id": self.chat_id,
             "text": text,

@@ -4,7 +4,6 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 from zoneinfo import ZoneInfo
 
 from .config import ROOT, env
@@ -28,7 +27,7 @@ class SourceReport:
     name: str
     fetched: int = 0
     new: int = 0
-    error: Optional[str] = None
+    error: str | None = None
     skipped: str = ""
 
 
@@ -63,7 +62,7 @@ def fetch_all(sources: list[Source], workers: int = 8) -> tuple[list[tuple[Sourc
     return [(s, jobs) for s, jobs, _ in results], [r for _, _, r in results]
 
 
-def in_quiet_hours(now_local: datetime, quiet: Optional[dict]) -> bool:
+def in_quiet_hours(now_local: datetime, quiet: dict | None) -> bool:
     """True when `now_local` falls in [start, end) hours, e.g. start 0 / end 7 = midnight to 7am."""
     if not quiet:
         return False
@@ -74,14 +73,14 @@ def in_quiet_hours(now_local: datetime, quiet: Optional[dict]) -> bool:
     return start <= hour < end if start < end else hour >= start or hour < end
 
 
-def run(config: dict, *, dry_run: bool = False, only: Optional[str] = None) -> RunResult:
+def run(config: dict, *, dry_run: bool = False, only: str | None = None) -> RunResult:
     run_cfg = config["run"]
     notify_cfg = config["notify"]
     now_local = datetime.now(ZoneInfo(notify_cfg.get("timezone", "Asia/Kolkata")))
     # Manual runs (workflow_dispatch), --only and --dry-run are you looking at the bot, so they ignore quiet hours.
     manual = dry_run or bool(only) or env("GITHUB_EVENT_NAME") == "workflow_dispatch"
     if not manual and in_quiet_hours(now_local, notify_cfg.get("quiet_hours")):
-        log.info("quiet hours (%s local): skipping this run, anything new is sent at the first run after", now_local.strftime("%H:%M"))
+        log.info("quiet hours (%s local): skipping, new jobs go out after", now_local.strftime("%H:%M"))
         return RunResult(quiet=True)
 
     state = State(state_path(config))
@@ -102,7 +101,8 @@ def run(config: dict, *, dry_run: bool = False, only: Optional[str] = None) -> R
     due, skipped = [], []
     for source in sources:
         age = state.minutes_since_fetch(source.name)
-        if source.min_interval_minutes and age is not None and age < source.min_interval_minutes and not (dry_run or only):
+        too_soon = bool(source.min_interval_minutes) and age is not None and age < source.min_interval_minutes
+        if too_soon and not (dry_run or only):
             skipped.append(SourceReport(source.name, skipped=f"ran {age:.0f}m ago"))
         else:
             due.append(source)
@@ -196,9 +196,9 @@ def run(config: dict, *, dry_run: bool = False, only: Optional[str] = None) -> R
 
     _track_failures(state, result.reports, telegram)
     summary_hour = notify_cfg.get("daily_summary_hour")
-    if summary_hour is not None and now_local.hour >= int(summary_hour) and not state.stats.get("summarized"):
-        if telegram.send_text(format_summary(state.stats, state.failures)):
-            state.stats["summarized"] = True
+    summary_due = summary_hour is not None and now_local.hour >= int(summary_hour) and not state.stats.get("summarized")
+    if summary_due and telegram.send_text(format_summary(state.stats, state.failures)):
+        state.stats["summarized"] = True
     state.save()
     return result
 
@@ -216,7 +216,7 @@ def _record_stats(state: State, now_local: datetime, delivered: list[Job]) -> No
 
 def _deliver(telegram: Telegram, jobs: list[Job], notify_cfg: dict, *, first_run: bool, silent: int) -> list[Job]:
     if first_run:
-        note = "✅ <b>Job alert is live.</b> Here are the best matches right now; newer ones will arrive as they appear."
+        note = "✅ <b>Job alert is live.</b> Here are the best matches right now; newer ones arrive as they appear."
         if silent:
             note += f"\n(+{silent} older matches saved quietly so you aren't flooded.)"
         telegram.send_text(note)
@@ -245,12 +245,15 @@ def _track_failures(state: State, reports: list[SourceReport], telegram: Telegra
             state.alerted.discard(report.name)
             continue
         state.failures[report.name] = state.failures.get(report.name, 0) + 1
-        if state.failures[report.name] >= FAILURE_ALERT_STREAK and report.name not in state.alerted:
-            if telegram.send_text(
-                f"⚠️ <b>{source_label(report.name)}</b> has failed {state.failures[report.name]} runs in a row.\n"
-                f"Last error: <code>{_escape(report.error)}</code>"
-            ):
-                state.alerted.add(report.name)
+        streak = state.failures[report.name]
+        if streak < FAILURE_ALERT_STREAK or report.name in state.alerted:
+            continue
+        warning = (
+            f"⚠️ <b>{source_label(report.name)}</b> has failed {streak} runs in a row.\n"
+            f"Last error: <code>{_escape(report.error)}</code>"
+        )
+        if telegram.send_text(warning):
+            state.alerted.add(report.name)
 
 
 def _escape(text: str) -> str:

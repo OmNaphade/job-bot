@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jobalert.filters import JobFilter
 from jobalert.models import Job
@@ -7,7 +7,7 @@ from jobalert.sources.base import Source
 from jobalert.store import State
 from jobalert.util import canonical_url, fingerprint, infer_experience, infer_required_experience, parse_dt
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 class FakeSource(Source):
@@ -46,7 +46,7 @@ def test_fingerprint_matches_same_role_across_sources():
 
 
 def test_parse_dt_handles_common_shapes():
-    assert parse_dt("2026-10-13") == datetime(2026, 10, 13, tzinfo=timezone.utc)
+    assert parse_dt("2026-10-13") == datetime(2026, 10, 13, tzinfo=UTC)
     assert parse_dt(1791869667000) == parse_dt(1791869667)
     assert parse_dt("Tue, 13 Oct 2026 10:00:00 +0000").year == 2026
     assert parse_dt("garbage") is None and parse_dt(None) is None
@@ -122,7 +122,7 @@ def test_corrupt_state_file_acts_like_first_run(tmp_path):
 
 def test_state_prunes_old_entries(tmp_path):
     state = State(tmp_path / "state.json")
-    state.seen = {"old": "2020-01-01T00:00:00+00:00", "new": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    state.seen = {"old": "2020-01-01T00:00:00+00:00", "new": datetime.now(UTC).isoformat(timespec="seconds")}
     state.save()
     assert set(State(tmp_path / "state.json").seen) == {"new"}
 

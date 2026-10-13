@@ -1,6 +1,5 @@
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
 
 from .models import Job
 from .sources.base import Source
@@ -52,13 +51,13 @@ class JobFilter:
         self.min_evidence = int(run.get("min_tech_evidence", 2))
         self.max_age = timedelta(days=float(run.get("max_age_days", 3)))
         min_salary = run.get("min_salary_lpa")
-        self.min_salary: Optional[float] = float(min_salary) if min_salary is not None else None
+        self.min_salary: float | None = float(min_salary) if min_salary is not None else None
         max_exp = run.get("max_experience_years")
-        self.max_experience: Optional[float] = float(max_exp) if max_exp is not None else None
+        self.max_experience: float | None = float(max_exp) if max_exp is not None else None
 
-    def check(self, job: Job, source: Source, now: Optional[datetime] = None, *, final: bool = True) -> Verdict:
+    def check(self, job: Job, source: Source, now: datetime | None = None, *, final: bool = True) -> Verdict:
         """`final=False` skips the keyword gate, for sources whose job description hasn't been read yet."""
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
 
         if job.posted_at and now - job.posted_at > self.max_age:
             return Verdict(False, "too old")
@@ -72,9 +71,10 @@ class JobFilter:
                 return Verdict(False, "region-locked")
         if self.min_salary is not None and job.salary_lpa is not None and job.salary_lpa < self.min_salary:
             return Verdict(False, "salary")
-        if self.allow_locations and not source.geo_targeted and job.location.lower() not in _UNKNOWN_LOCATIONS:
-            if not any(p.search(job.location) for p in self.allow_locations):
-                return Verdict(False, "location")
+        place_matters = bool(self.allow_locations) and not source.geo_targeted
+        place_known = job.location.lower() not in _UNKNOWN_LOCATIONS
+        if place_matters and place_known and not any(p.search(job.location) for p in self.allow_locations):
+            return Verdict(False, "location")
         if self.max_experience is not None and job.min_exp is not None and job.min_exp > self.max_experience:
             return Verdict(False, "experience")
         if not final or source.prefiltered or not self.include:
@@ -91,9 +91,9 @@ class JobFilter:
             return Verdict(False, "title has no tech keyword, description doesn't prove it")
         return Verdict(True)
 
-    def score(self, job: Job, now: Optional[datetime] = None) -> int:
+    def score(self, job: Job, now: datetime | None = None) -> int:
         """Higher = better fit. Title hits count most; fresh and preferred-city jobs get a bump."""
-        now = now or datetime.now(timezone.utc)
+        now = now or datetime.now(UTC)
         score = 3 * sum(1 for p in self.include if p.search(job.title))
         score += min(4, sum(1 for p in self.include if not p.search(job.title) and p.search(job.extra)))
         score += 2 * sum(1 for p in self.boost if p.search(job.title) or p.search(job.extra))

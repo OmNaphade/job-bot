@@ -65,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
 
     run_parser = commands.add_parser("run", help="fetch, filter and send new jobs once")
-    run_parser.add_argument("--dry-run", action="store_true", help="print what would be sent; send nothing, save nothing")
+    run_parser.add_argument("--dry-run", action="store_true", help="show what would be sent; send and save nothing")
     run_parser.add_argument("--only", help="only sources whose name contains this (e.g. linkedin)")
     commands.add_parser("test-telegram", help="send a test message to check your bot token and chat id")
 

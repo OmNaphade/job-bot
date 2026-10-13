@@ -1,8 +1,8 @@
 import re
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 import requests
@@ -23,12 +23,12 @@ class FetchError(Exception):
     """A source could not be fetched at all (not just 'returned zero jobs')."""
 
 
-def get(url: str, *, params: Optional[dict] = None, headers: Optional[dict] = None, retries: int = 2,
+def get(url: str, *, params: dict | None = None, headers: dict | None = None, retries: int = 2,
         method: str = "GET", json: Any = None, backoff: float = 2) -> requests.Response:
     """HTTP request with a browser UA and a few retries on 429/5xx (waiting backoff, 2x backoff, ...)."""
     merged = {"User-Agent": USER_AGENT, "Accept-Language": "en-US,en;q=0.9"}
     merged.update(headers or {})
-    last: Optional[Exception] = None
+    last: Exception | None = None
     for attempt in range(retries + 1):
         try:
             response = requests.request(method, url, params=params, headers=merged, json=json, timeout=TIMEOUT)
@@ -68,7 +68,7 @@ def fingerprint(title: str, company: str, location: str) -> str:
     return f"{_alnum(title)}|{_alnum(company)}|{city}"
 
 
-def parse_dt(value: Any) -> Optional[datetime]:
+def parse_dt(value: Any) -> datetime | None:
     """Best-effort parse of ISO strings, RFC 2822 dates and epoch seconds/milliseconds."""
     if value in (None, "", 0):
         return None
@@ -77,13 +77,13 @@ def parse_dt(value: Any) -> Optional[datetime]:
             number = float(value)
             if number > 1e11:  # milliseconds
                 number /= 1000
-            return datetime.fromtimestamp(number, tz=timezone.utc)
+            return datetime.fromtimestamp(number, tz=UTC)
         text = str(value).strip()
         try:
             parsed = datetime.fromisoformat(text.replace("Z", "+00:00"))
         except ValueError:
             parsed = parsedate_to_datetime(text)
-        return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        return parsed if parsed.tzinfo else parsed.replace(tzinfo=UTC)
     except (ValueError, TypeError, OverflowError):
         return None
 
@@ -92,7 +92,7 @@ _EXP_RANGE = re.compile(r"(\d{1,2})\s*(?:-|–|to)\s*(\d{1,2})\s*\+?\s*(?:years?
 _EXP_MIN = re.compile(r"(\d{1,2})\s*\+\s*(?:years?|yrs?)(?![A-Za-z])", re.IGNORECASE)
 
 
-def infer_experience(title: str, extra: str = "") -> tuple[Optional[float], Optional[float]]:
+def infer_experience(title: str, extra: str = "") -> tuple[float | None, float | None]:
     """Reads "2-4 yrs" / "3+ years" out of text for sources that don't give experience as a field.
 
     A bare "N+ years" is trusted only in the title: descriptions say "10+ years of excellence"
@@ -114,7 +114,7 @@ _YEARS = re.compile(r"(\d{1,2})\s*(?:(?:-|–|to)\s*(\d{1,2}))?\s*(\+)?\s*(?:yea
 _BOAST = re.compile(r"(?:with|over|more than|past|last|since|for)\s*$", re.IGNORECASE)
 
 
-def infer_required_experience(text: str) -> tuple[Optional[float], Optional[float]]:
+def infer_required_experience(text: str) -> tuple[float | None, float | None]:
     """Reads the experience a job *asks for* out of a long description.
 
     Takes the first "N years"/"N-M years"/"N+ years" that sits next to the word "experience" and is
