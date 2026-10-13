@@ -2,22 +2,24 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 from .config import ROOT, env
-from .util import FetchError
 from .filters import JobFilter
 from .models import Job
-from .notify import Telegram, source_label
+from .notify import Telegram, format_summary, source_label
 from .sources import build_sources
 from .sources.base import Source
 from .store import State
+from .util import FetchError
 
 log = logging.getLogger(__name__)
 
 # Warn on Telegram once a source has failed this many runs in a row.
-FAILURE_ALERT_STREAK = 4
+FAILURE_ALERT_STREAK = 3
 HOT_SCORE = 8
 
 
@@ -36,6 +38,7 @@ class RunResult:
     to_send: list[Job] = field(default_factory=list)
     sent: int = 0
     first_run: bool = False
+    quiet: bool = False
     rejected: dict[str, int] = field(default_factory=dict)
 
 
@@ -60,9 +63,27 @@ def fetch_all(sources: list[Source], workers: int = 8) -> tuple[list[tuple[Sourc
     return [(s, jobs) for s, jobs, _ in results], [r for _, _, r in results]
 
 
+def in_quiet_hours(now_local: datetime, quiet: Optional[dict]) -> bool:
+    """True when `now_local` falls in [start, end) hours, e.g. start 0 / end 7 = midnight to 7am."""
+    if not quiet:
+        return False
+    start, end = int(quiet.get("start", 0)), int(quiet.get("end", 0))
+    if start == end:
+        return False
+    hour = now_local.hour
+    return start <= hour < end if start < end else hour >= start or hour < end
+
+
 def run(config: dict, *, dry_run: bool = False, only: Optional[str] = None) -> RunResult:
     run_cfg = config["run"]
     notify_cfg = config["notify"]
+    now_local = datetime.now(ZoneInfo(notify_cfg.get("timezone", "Asia/Kolkata")))
+    # Manual runs (workflow_dispatch), --only and --dry-run are you looking at the bot, so they ignore quiet hours.
+    manual = dry_run or bool(only) or env("GITHUB_EVENT_NAME") == "workflow_dispatch"
+    if not manual and in_quiet_hours(now_local, notify_cfg.get("quiet_hours")):
+        log.info("quiet hours (%s local): skipping this run, anything new is sent at the first run after", now_local.strftime("%H:%M"))
+        return RunResult(quiet=True)
+
     state = State(state_path(config))
     job_filter = JobFilter(config)
     telegram = Telegram(env("TELEGRAM_BOT_TOKEN"), env("TELEGRAM_CHAT_ID"))
@@ -167,14 +188,30 @@ def run(config: dict, *, dry_run: bool = False, only: Optional[str] = None) -> R
     for job in delivered + silent:
         state.mark_seen(job)
     result.sent = len(delivered)
+    _record_stats(state, now_local, delivered)
     for report in result.reports:
         if report.error is None and not report.skipped:
             state.mark_fetched(report.name)
     state.initialized = state.initialized or any(r.error is None for r in result.reports)
 
     _track_failures(state, result.reports, telegram)
+    summary_hour = notify_cfg.get("daily_summary_hour")
+    if summary_hour is not None and now_local.hour >= int(summary_hour) and not state.stats.get("summarized"):
+        if telegram.send_text(format_summary(state.stats, state.failures)):
+            state.stats["summarized"] = True
     state.save()
     return result
+
+
+def _record_stats(state: State, now_local: datetime, delivered: list[Job]) -> None:
+    today = now_local.date().isoformat()
+    if state.stats.get("date") != today:
+        state.stats = {"date": today, "runs": 0, "sent": 0, "by_source": {}, "summarized": False}
+    state.stats["runs"] += 1
+    state.stats["sent"] += len(delivered)
+    for job in delivered:
+        label = source_label(job.source).split(" (")[0]
+        state.stats["by_source"][label] = state.stats["by_source"].get(label, 0) + 1
 
 
 def _deliver(telegram: Telegram, jobs: list[Job], notify_cfg: dict, *, first_run: bool, silent: int) -> list[Job]:

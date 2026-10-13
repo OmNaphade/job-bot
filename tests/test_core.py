@@ -205,3 +205,37 @@ def test_required_experience_from_descriptions():
     assert infer_required_experience("With 20 years of experience in payments, Nium...") == (None, None)
     assert infer_required_experience("Over 5 years of experience serving clients") == (None, None)
     assert infer_required_experience("This is a 6 month contract. Freshers welcome") == (None, None)
+
+
+# ---------------------------------------------------------------- companies, regions, salary
+
+UPGRADED = {
+    "keywords": {"include": ["java"], "exclude": []},
+    "companies": {"exclude": ["Shady Staffing"], "prefer": ["Acme"]},
+    "location": {"allow": ["india", "remote", "anywhere"], "exclude": ["us only", "mexico", "europe"], "preferred": []},
+    "run": {"max_age_days": 3, "min_salary_lpa": 4},
+}
+
+
+def test_company_blocklist_and_preference():
+    f = JobFilter(UPGRADED)
+    assert f.check(make_job("Java Dev", company="Shady Staffing Pvt Ltd"), FakeSource()).reason == "excluded company"
+    assert f.score(make_job("Java Dev", company="Acme Corp"), NOW) == f.score(make_job("Java Dev", company="Other"), NOW) + 3
+
+
+def test_region_locked_remote_jobs_are_dropped_unless_open_to_india():
+    f = JobFilter(UPGRADED)
+    source = FakeSource()
+    assert f.check(make_job("Java Dev (Remote, Mexico)", location="Remote"), source).reason == "region-locked"
+    assert f.check(make_job("Java Dev", location="Remote - US only"), source).reason == "region-locked"
+    assert f.check(make_job("Java Dev", location="Remote, Europe or India"), source).keep
+    assert f.check(make_job("Java Dev", location="Anywhere"), source).keep
+    # a place you searched for yourself is never second-guessed
+    assert f.check(make_job("Java Dev (Remote, Mexico)", location="Remote"), FakeSource(geo_targeted=True)).keep
+
+
+def test_minimum_salary_only_applies_when_a_salary_is_stated():
+    f = JobFilter(UPGRADED)
+    assert f.check(make_job("Java Dev", salary_lpa=2.5), FakeSource()).reason == "salary"
+    assert f.check(make_job("Java Dev", salary_lpa=6), FakeSource()).keep
+    assert f.check(make_job("Java Dev"), FakeSource()).keep  # unknown salary is not a reason to drop it

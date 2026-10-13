@@ -14,6 +14,7 @@ class State:
 
     seen:      job link / dedup keys already alerted on (-> ISO timestamp, pruned after 45 days)
     failures:  consecutive failed runs per source
+    stats:     today's runs / alerts sent (reset each local day), used for the daily summary message
     alerted:   sources we've already warned about during the current failure streak
     initialized: False until a run has actually fetched something, so the "first run" flood
                protection still applies if the very first run happens while every source is down
@@ -25,6 +26,7 @@ class State:
         self.failures: dict[str, int] = {}
         self.alerted: set[str] = set()
         self.last_fetch: dict[str, str] = {}
+        self.stats: dict = {}
         self.initialized = False
         self._load()
 
@@ -39,6 +41,7 @@ class State:
         self.failures = {k: int(v) for k, v in data.get("failures", {}).items()}
         self.alerted = set(data.get("alerted", []))
         self.last_fetch = dict(data.get("last_fetch", {}))
+        self.stats = dict(data.get("stats", {}))
         self.initialized = bool(data.get("initialized", bool(self.seen)))
 
     def minutes_since_fetch(self, source_name: str) -> float | None:
@@ -67,6 +70,7 @@ class State:
             "failures": self.failures,
             "alerted": sorted(self.alerted),
             "last_fetch": self.last_fetch,
+            "stats": self.stats,
             # Changes once a day, so the Actions state branch gets a daily commit even when idle; that
             # repo activity is what stops GitHub from pausing the schedule after 60 quiet days.
             "last_run": datetime.now(timezone.utc).date().isoformat(),

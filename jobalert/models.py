@@ -20,6 +20,8 @@ class Job:
     min_exp: Optional[float] = None
     max_exp: Optional[float] = None
     salary: str = ""
+    # Lowest advertised annual salary in lakh INR (LPA), when the source states one.
+    salary_lpa: Optional[float] = None
     score: int = 0
     link_key: str = field(init=False)
     dedup_key: str = field(init=False)

@@ -84,6 +84,21 @@ def chunk_digest(jobs: list[Job]) -> Iterator[tuple[list[Job], str]]:
         yield chunk, text
 
 
+def format_summary(stats: dict, failing: dict[str, int]) -> str:
+    """The end-of-day status message: proof the bot is alive, plus anything that needs attention."""
+    lines = [f"📊 <b>Daily summary</b> · {html.escape(str(stats.get('date', '')))}"]
+    sent = int(stats.get("sent", 0))
+    lines.append(f"Checks today: {int(stats.get('runs', 0))}  ·  Jobs sent: {sent}")
+    by_source = sorted(stats.get("by_source", {}).items(), key=lambda kv: -kv[1])
+    if by_source:
+        lines.append("Where they came from: " + ", ".join(f"{html.escape(name)} {count}" for name, count in by_source))
+    elif not sent:
+        lines.append("Nothing new matched your filters today.")
+    for name, streak in sorted(failing.items()):
+        lines.append(f"⚠️ {html.escape(source_label(name))} has failed {streak} check(s) in a row")
+    return "\n".join(lines)
+
+
 class Telegram:
     def __init__(self, token: str, chat_id: str) -> None:
         self.token = token

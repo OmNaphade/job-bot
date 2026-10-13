@@ -181,18 +181,32 @@ location:
     - maharashtra
   # Small score bonus: you're in Pune, and remote works from anywhere.
   preferred: [pune, remote]
+  # Drops region-locked postings ("Remote, Mexico", "US only") from sources you didn't search by place,
+  # unless the posting also says India / anywhere / worldwide / APAC / Asia.
+  exclude: [us only, usa only, united states, u.s., uk only, europe, emea, latam, latin america, canada,
+            mexico, brazil, argentina, colombia, australia, new zealand, north america]
+
+companies:
+  # Company names to never alert on (staffing spam, past bad experiences). Whole-word, case-insensitive.
+  exclude: []
+  # Company names that get a score bonus, so they sort first. Example: [Google, Microsoft, Amazon, Atlassian]
+  prefer: []
 
 run:
   max_age_days: 3              # ignore jobs posted longer ago than this (when the date is known)
   max_experience_years: 1      # ignore jobs whose MINIMUM experience is above this (read from the
                                # source, or from "2-4 yrs" / "3+ years" in the title)
-  max_per_run: 40              # cap per run; anything beyond is sent on the next run
+  # min_salary_lpa: 3          # drop jobs that advertise less than this many lakh/yr (only when a salary is shown)
+  max_per_run: 60              # cap per run; anything beyond is sent on the next run
   min_tech_evidence: 2         # for generic titles: matches needed in the description/skills (see generic_titles)
-  max_detail_fetches: 25       # LinkedIn job pages opened per run (the rest wait for the next run)
-  detail_time_budget_seconds: 150   # ...and at most this long spent reading them
+  max_detail_fetches: 40       # LinkedIn job pages opened per run (the rest wait for the next run)
+  detail_time_budget_seconds: 240   # ...and at most this long spent reading them
   first_run_limit: 10          # on the very first run only, alert on the best N and quietly remember the rest
 
 notify:
+  timezone: Asia/Kolkata       # used for quiet hours and the daily summary
+  quiet_hours: { start: 0, end: 7 }   # no checks and no pings from 00:00 to 07:00; the first run after sends it all
+  daily_summary_hour: 21       # one status message a day, from the first run at/after this hour
   individual_limit: 8          # up to this many get their own message with an Apply button; the rest go in a compact digest
   hot_score: 8                 # score at or above this gets the fire emoji
 
@@ -206,7 +220,7 @@ sources:
   linkedin:
     enabled: true
     posted_within_hours: 24
-    pages: 1                   # 25 results per page
+    pages: 2                   # 25 results per page; runs are 2 hours apart, so look a little deeper
     min_interval_minutes: 50   # LinkedIn is searched at most this often (~hourly) however often the job runs
     fetch_details: true        # open each new job to read its description: checks experience and tech
                                # stack for real, and lets generic titles in. Set false to skip.
