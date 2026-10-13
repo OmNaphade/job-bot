@@ -1,8 +1,11 @@
 import argparse
 import logging
 import sys
+import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
-from . import __version__
+from . import __version__, runlog
 from .config import env, load_config
 from .notify import Telegram, source_label
 from .pipeline import run
@@ -86,9 +89,17 @@ def main(argv: list[str] | None = None) -> int:
         print("Sent. Check Telegram." if ok else "Telegram rejected the message; see the error above.")
         return 0 if ok else 1
 
+    started = time.monotonic()
     result = run(config, dry_run=args.dry_run, only=args.only)
     _print_report(result, args.dry_run)
     _write_step_summary(result)
+    if not args.dry_run:
+        # One log row per run, quiet ones included; the workflow commits it together with the state.
+        runlog.append(
+            result,
+            datetime.now(ZoneInfo(config["notify"].get("timezone", "Asia/Kolkata"))),
+            time.monotonic() - started,
+        )
     # A broken source shouldn't fail the whole run, but if *nothing* worked, say so loudly.
     return 1 if result.reports and all(r.error for r in result.reports) else 0
 

@@ -57,6 +57,9 @@ jobs:
           mkdir -p data
           if git fetch --depth=1 origin state 2>/dev/null; then
             git show FETCH_HEAD:state.json > data/state.json
+            if git cat-file -e FETCH_HEAD:runs.md 2>/dev/null; then
+              git show FETCH_HEAD:runs.md > data/runs.md
+            fi
           fi
 
       - name: Check for new jobs
@@ -72,11 +75,13 @@ jobs:
         run: python -m jobalert run ${{ env.LIVE == 'true' && ' ' || '--dry-run' }}
 
       # always(): even a run that errored late keeps the jobs it already alerted on from repeating.
-      - name: Save state
+      # Every run (quiet ones too) appends a row to runs.md, so every run makes one commit on `state`.
+      - name: Save state and run log
         if: always() && env.HAS_SECRETS == 'true' && env.LIVE == 'true'
         run: |
           [ -f data/state.json ] || exit 0
           cp data/state.json "$RUNNER_TEMP/state.json"
+          if [ -f data/runs.md ]; then cp data/runs.md "$RUNNER_TEMP/runs.md"; fi
           git config user.name "job-alert"
           git config user.email "job-alert@users.noreply.github.com"
           if git fetch --depth=1 origin state 2>/dev/null; then
@@ -87,6 +92,11 @@ jobs:
           fi
           cp "$RUNNER_TEMP/state.json" state.json
           git add state.json
+          if [ -f "$RUNNER_TEMP/runs.md" ]; then
+            cp "$RUNNER_TEMP/runs.md" runs.md
+            git add runs.md
+          fi
           git diff --cached --quiet && exit 0
-          git commit -q -m "state $(date -u +%Y-%m-%dT%H:%MZ)"
+          last_row=$(grep '^| 20' runs.md 2>/dev/null | tail -1 || true)
+          git commit -q -m "run $(date -u +%Y-%m-%dT%H:%MZ)" -m "$last_row"
           git push -q origin HEAD:state

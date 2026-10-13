@@ -5,6 +5,11 @@ versions follow [Semantic Versioning](https://semver.org).
 
 ## [Unreleased]
 
+### Added
+- Run log: every run (quiet ones too) appends a row to `runs.md` and commits it with the saved state to the
+  `state` branch, so GitHub shows one commit per run: time, link to the Actions run, how long it took, jobs fetched/new/sent
+  and any failing sources.
+
 ## [2.0.0] - 2026-10-13
 
 First release of the script-only rewrite.

@@ -29,6 +29,12 @@ Until the Telegram secrets exist, the scheduled run does nothing and shows a war
 | Same job alerted twice | `state` branch | State was lost (first-run behavior) or two schedulers are running. Run only one. |
 | Workflow not running | Actions tab | GitHub pauses schedules after 60 days with no repo activity: click *Enable workflow* |
 
+## Run history
+
+Every run, including quiet-hours ones, makes one commit on the `state` branch. Open the branch on GitHub and read
+`runs.md` for a table of recent runs (newest at the bottom, last 300 kept): time, a link to the
+Actions run, how long it took, result, jobs fetched / new / sent, and which sources failed. The commit message of each run carries the same row. `main` never changes.
+
 ## Common operations
 
 - **Try a change safely:** push your branch, Actions → *Run workflow* → select the branch. Non-`main` branches are

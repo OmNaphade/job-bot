@@ -22,6 +22,8 @@ sources ──► filter + score ──► skip what you've already seen ──�
 - **Quiet nights.** No checks or pings from 00:00 to 07:00 IST; the 07:17 run sends the overnight jobs.
 - **Daily summary** at ~21:00 (checks run, jobs sent per source, anything failing) as proof it's alive.
 - **Tells you when a source breaks** after 3 failed runs in a row.
+- **A commit per run.** Each run commits its memory and a row in `runs.md` to the `state` branch, so the run history
+  is visible on GitHub. `main` is never touched by the bot.
 
 ## Sources
 
