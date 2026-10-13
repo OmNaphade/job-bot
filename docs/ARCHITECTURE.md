@@ -45,6 +45,9 @@ of them an `include` term. So the Java *Associate Engineer* gets in and the *Bus
 
 ## State
 
+On GitHub the `state` branch also holds `runs.md`, a table with one row per run (written by `runlog.py`, trimmed
+to the last 300 rows), so each run produces exactly one commit there.
+
 `state.json` holds: `seen` (link and title|company|city fingerprints, pruned after 45 days), `failures`,
 `alerted`, `last_fetch`, today's `stats`, and `initialized`. On GitHub it lives on the `state` branch, restored
 before each run and pushed after it. Delete it to start over (the next run is a "first run" again).

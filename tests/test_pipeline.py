@@ -216,3 +216,49 @@ def test_no_summary_when_not_configured(env_setup):
     env_setup["sources"] = [FakeSource(jobs(1))]
     pipeline.run(CONFIG)
     assert not [m for m in env_setup["telegram"].messages if "Daily summary" in m]
+
+
+# ---------------------------------------------------------------- run log
+
+def test_run_log_rows_for_normal_quiet_and_failed_runs(tmp_path):
+    from jobalert import runlog
+
+    path = tmp_path / "runs.md"
+    when = datetime(2026, 10, 13, 17, 17)
+
+    normal = pipeline.RunResult(
+        reports=[pipeline.SourceReport("foundit", fetched=40, new=3), pipeline.SourceReport("unstop", fetched=10, new=1)],
+        sent=4,
+    )
+    runlog.append(normal, when, 42, path)
+    runlog.append(pipeline.RunResult(quiet=True), when.replace(hour=3), 1, path)
+    broken = pipeline.RunResult(reports=[pipeline.SourceReport("linkedin", error="429"), pipeline.SourceReport("foundit", fetched=5)])
+    runlog.append(broken, when.replace(hour=19), 90, path)
+
+    lines = path.read_text(encoding="utf-8").splitlines()
+    assert lines[0] == "# Run log" and lines[2].startswith("| Time")
+    rows = [line for line in lines if line.startswith("| 2026")]
+    assert "| local | 42s | ok | 50 | 4 | 4 |" in rows[0]
+    assert "quiet hours, skipped" in rows[1]
+    assert "ok, with problems" in rows[2] and "failed: linkedin" in rows[2]
+
+
+def test_run_log_keeps_only_the_latest_rows(tmp_path):
+    from jobalert import runlog
+
+    path = tmp_path / "runs.md"
+    for i in range(runlog.MAX_ROWS + 25):
+        runlog.append(pipeline.RunResult(sent=i), datetime(2026, 10, 13, 12, 0), 0, path)
+    rows = [line for line in path.read_text(encoding="utf-8").splitlines() if line.startswith("| 2026")]
+    assert len(rows) == runlog.MAX_ROWS
+    assert rows[-1].split("|")[7].strip() == str(runlog.MAX_ROWS + 24)  # newest kept, oldest dropped
+
+
+def test_run_log_links_to_the_github_actions_run(tmp_path, monkeypatch):
+    from jobalert import runlog
+
+    monkeypatch.setenv("GITHUB_RUN_ID", "987654")
+    monkeypatch.setenv("GITHUB_RUN_NUMBER", "128")
+    monkeypatch.setenv("GITHUB_REPOSITORY", "OmNaphade/job-bot")
+    row = runlog.format_row(pipeline.RunResult(), datetime(2026, 10, 13, 17, 17), 61)
+    assert "[#128](https://github.com/OmNaphade/job-bot/actions/runs/987654)" in row and "| 61s |" in row
