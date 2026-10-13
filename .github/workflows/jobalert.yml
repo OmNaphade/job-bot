@@ -1,36 +1,58 @@
-name: Job alert
+name: Job alert (production)
+
+# Production run. Scheduled workflows always run from the default branch (main), so only code that has
+# been merged to main is ever live. Manual runs from any other branch are forced into --dry-run: they
+# fetch and filter for real but send nothing and save no state, which makes them a safe way to try a
+# change from `develop` against live sources.
 
 on:
   schedule:
-    # Twice an hour at :17 and :47. GitHub is busiest at :00 and :30, where scheduled runs get delayed
-    # or dropped, so these off-peak minutes are more reliable. Public repo = unlimited Actions minutes.
-    # (If you ever go private, switch to hourly: 2,000 free minutes a month won't cover this.)
-    - cron: "17,47 * * * *"
-  workflow_dispatch: {}
+    # Every 2 hours at :47 UTC, i.e. 07:17, 09:17, 11:17 ... 05:17 on the clock in India (UTC+5:30).
+    # Runs that land in quiet hours (00:00-07:00 IST, see config.yaml) exit immediately.
+    - cron: "47 1-23/2 * * *"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run: show what would be sent, send nothing, save nothing"
+        type: boolean
+        default: false
 
 concurrency:
-  group: jobalert
+  group: jobalert-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: write   # only used to update the `state` branch
+
+env:
+  # Steps are skipped (not failed) until the Telegram secrets exist, so a fresh fork stays green.
+  HAS_SECRETS: ${{ secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != '' }}
+  LIVE: ${{ github.ref == 'refs/heads/main' && inputs.dry_run != true }}
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
+      - name: Missing secrets
+        if: env.HAS_SECRETS != 'true'
+        run: echo "::warning::TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secrets are not set; nothing was run."
+
       - uses: actions/checkout@v4
+        if: env.HAS_SECRETS == 'true'
 
       - uses: actions/setup-python@v5
+        if: env.HAS_SECRETS == 'true'
         with:
           python-version: "3.12"
           cache: pip
 
       - run: pip install -r requirements.txt
+        if: env.HAS_SECRETS == 'true'
 
       # What has already been alerted lives on its own `state` branch, so main stays clean.
       - name: Restore state
+        if: env.HAS_SECRETS == 'true'
         run: |
           mkdir -p data
           if git fetch --depth=1 origin state 2>/dev/null; then
@@ -38,6 +60,7 @@ jobs:
           fi
 
       - name: Check for new jobs
+        if: env.HAS_SECRETS == 'true'
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -46,11 +69,11 @@ jobs:
           ADZUNA_APP_ID: ${{ secrets.ADZUNA_APP_ID }}
           ADZUNA_APP_KEY: ${{ secrets.ADZUNA_APP_KEY }}
           JOOBLE_API_KEY: ${{ secrets.JOOBLE_API_KEY }}
-        run: python -m jobalert run
+        run: python -m jobalert run ${{ env.LIVE == 'true' && ' ' || '--dry-run' }}
 
       # always(): even a run that errored late keeps the jobs it already alerted on from repeating.
       - name: Save state
-        if: always()
+        if: always() && env.HAS_SECRETS == 'true' && env.LIVE == 'true'
         run: |
           [ -f data/state.json ] || exit 0
           cp data/state.json "$RUNNER_TEMP/state.json"

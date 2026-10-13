@@ -1,8 +1,8 @@
 import html
 import logging
 import time
-from datetime import datetime, timezone
-from typing import Iterator, Optional
+from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import requests
 
@@ -30,10 +30,10 @@ def source_label(source: str) -> str:
     return f"{label} ({detail})" if detail and base in _SHOW_DETAIL else label
 
 
-def _age(posted_at: Optional[datetime]) -> str:
+def _age(posted_at: datetime | None) -> str:
     if not posted_at:
         return ""
-    minutes = max(0, int((datetime.now(timezone.utc) - posted_at).total_seconds() // 60))
+    minutes = max(0, int((datetime.now(UTC) - posted_at).total_seconds() // 60))
     if minutes < 60:
         return f"{max(minutes, 1)}m ago"
     if minutes < 60 * 48:
@@ -84,6 +84,21 @@ def chunk_digest(jobs: list[Job]) -> Iterator[tuple[list[Job], str]]:
         yield chunk, text
 
 
+def format_summary(stats: dict, failing: dict[str, int]) -> str:
+    """The end-of-day status message: proof the bot is alive, plus anything that needs attention."""
+    lines = [f"📊 <b>Daily summary</b> · {html.escape(str(stats.get('date', '')))}"]
+    sent = int(stats.get("sent", 0))
+    lines.append(f"Checks today: {int(stats.get('runs', 0))}  ·  Jobs sent: {sent}")
+    by_source = sorted(stats.get("by_source", {}).items(), key=lambda kv: -kv[1])
+    if by_source:
+        lines.append("Where they came from: " + ", ".join(f"{html.escape(name)} {count}" for name, count in by_source))
+    elif not sent:
+        lines.append("Nothing new matched your filters today.")
+    for name, streak in sorted(failing.items()):
+        lines.append(f"⚠️ {html.escape(source_label(name))} has failed {streak} check(s) in a row")
+    return "\n".join(lines)
+
+
 class Telegram:
     def __init__(self, token: str, chat_id: str) -> None:
         self.token = token
@@ -113,7 +128,7 @@ class Telegram:
             return False
         return False
 
-    def send_text(self, text: str, *, buttons: Optional[list[list[dict]]] = None) -> bool:
+    def send_text(self, text: str, *, buttons: list[list[dict]] | None = None) -> bool:
         payload: dict = {
             "chat_id": self.chat_id,
             "text": text,

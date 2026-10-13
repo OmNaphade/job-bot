@@ -1,7 +1,6 @@
 import html
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 from .util import canonical_url, fingerprint, infer_experience
 
@@ -13,13 +12,15 @@ class Job:
     location: str
     link: str
     source: str
-    posted_at: Optional[datetime] = None
+    posted_at: datetime | None = None
     # Searchable text that is not shown by default: skills/tags, a description snippet, ...
     extra: str = ""
     # Minimum years of experience the posting asks for, when the source says so.
-    min_exp: Optional[float] = None
-    max_exp: Optional[float] = None
+    min_exp: float | None = None
+    max_exp: float | None = None
     salary: str = ""
+    # Lowest advertised annual salary in lakh INR (LPA), when the source states one.
+    salary_lpa: float | None = None
     score: int = 0
     link_key: str = field(init=False)
     dedup_key: str = field(init=False)

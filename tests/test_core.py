@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from jobalert.filters import JobFilter
 from jobalert.models import Job
@@ -7,7 +7,7 @@ from jobalert.sources.base import Source
 from jobalert.store import State
 from jobalert.util import canonical_url, fingerprint, infer_experience, infer_required_experience, parse_dt
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 
 class FakeSource(Source):
@@ -46,7 +46,7 @@ def test_fingerprint_matches_same_role_across_sources():
 
 
 def test_parse_dt_handles_common_shapes():
-    assert parse_dt("2026-10-13") == datetime(2026, 10, 13, tzinfo=timezone.utc)
+    assert parse_dt("2026-10-13") == datetime(2026, 10, 13, tzinfo=UTC)
     assert parse_dt(1791869667000) == parse_dt(1791869667)
     assert parse_dt("Tue, 13 Oct 2026 10:00:00 +0000").year == 2026
     assert parse_dt("garbage") is None and parse_dt(None) is None
@@ -122,7 +122,7 @@ def test_corrupt_state_file_acts_like_first_run(tmp_path):
 
 def test_state_prunes_old_entries(tmp_path):
     state = State(tmp_path / "state.json")
-    state.seen = {"old": "2020-01-01T00:00:00+00:00", "new": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+    state.seen = {"old": "2020-01-01T00:00:00+00:00", "new": datetime.now(UTC).isoformat(timespec="seconds")}
     state.save()
     assert set(State(tmp_path / "state.json").seen) == {"new"}
 
@@ -205,3 +205,37 @@ def test_required_experience_from_descriptions():
     assert infer_required_experience("With 20 years of experience in payments, Nium...") == (None, None)
     assert infer_required_experience("Over 5 years of experience serving clients") == (None, None)
     assert infer_required_experience("This is a 6 month contract. Freshers welcome") == (None, None)
+
+
+# ---------------------------------------------------------------- companies, regions, salary
+
+UPGRADED = {
+    "keywords": {"include": ["java"], "exclude": []},
+    "companies": {"exclude": ["Shady Staffing"], "prefer": ["Acme"]},
+    "location": {"allow": ["india", "remote", "anywhere"], "exclude": ["us only", "mexico", "europe"], "preferred": []},
+    "run": {"max_age_days": 3, "min_salary_lpa": 4},
+}
+
+
+def test_company_blocklist_and_preference():
+    f = JobFilter(UPGRADED)
+    assert f.check(make_job("Java Dev", company="Shady Staffing Pvt Ltd"), FakeSource()).reason == "excluded company"
+    assert f.score(make_job("Java Dev", company="Acme Corp"), NOW) == f.score(make_job("Java Dev", company="Other"), NOW) + 3
+
+
+def test_region_locked_remote_jobs_are_dropped_unless_open_to_india():
+    f = JobFilter(UPGRADED)
+    source = FakeSource()
+    assert f.check(make_job("Java Dev (Remote, Mexico)", location="Remote"), source).reason == "region-locked"
+    assert f.check(make_job("Java Dev", location="Remote - US only"), source).reason == "region-locked"
+    assert f.check(make_job("Java Dev", location="Remote, Europe or India"), source).keep
+    assert f.check(make_job("Java Dev", location="Anywhere"), source).keep
+    # a place you searched for yourself is never second-guessed
+    assert f.check(make_job("Java Dev (Remote, Mexico)", location="Remote"), FakeSource(geo_targeted=True)).keep
+
+
+def test_minimum_salary_only_applies_when_a_salary_is_stated():
+    f = JobFilter(UPGRADED)
+    assert f.check(make_job("Java Dev", salary_lpa=2.5), FakeSource()).reason == "salary"
+    assert f.check(make_job("Java Dev", salary_lpa=6), FakeSource()).keep
+    assert f.check(make_job("Java Dev"), FakeSource()).keep  # unknown salary is not a reason to drop it

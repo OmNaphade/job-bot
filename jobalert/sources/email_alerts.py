@@ -9,13 +9,14 @@ Parsers for LinkedIn and Indeed were calibrated against real digest emails. Nauk
 (it keys off naukri.com/job-listings-* links); if it misses jobs, send me one of its emails.
 """
 
+import contextlib
 import email
 import email.message
 import imaplib
 import logging
 import re
-from datetime import datetime, timedelta, timezone
-from typing import Callable, Optional
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 from urllib.parse import urlparse
 
 from bs4 import BeautifulSoup
@@ -154,10 +155,8 @@ class EmailAlerts(Source):
                 for mailbox in settings["mailboxes"]:
                     jobs.extend(self._read_mailbox(connection, provider, settings["sender"], mailbox))
         finally:
-            try:
+            with contextlib.suppress(imaplib.IMAP4.error, OSError):
                 connection.logout()
-            except (imaplib.IMAP4.error, OSError):
-                pass
         return jobs
 
     def _read_mailbox(self, connection: imaplib.IMAP4_SSL, provider: str, sender: str, mailbox: str) -> list[Job]:
@@ -165,7 +164,7 @@ class EmailAlerts(Source):
         if status != "OK":
             log.info("email_alerts: mailbox '%s' not found, skipping (create the Gmail label or remove it)", mailbox)
             return []
-        since = (datetime.now(timezone.utc) - timedelta(days=self.lookback_days)).strftime("%d-%b-%Y")
+        since = (datetime.now(UTC) - timedelta(days=self.lookback_days)).strftime("%d-%b-%Y")
         status, data = connection.search(None, "SINCE", since, "FROM", f'"{sender}"')
         if status != "OK" or not data or not data[0]:
             return []
@@ -194,7 +193,7 @@ class EmailAlerts(Source):
         return jobs
 
 
-def _html_body(message: email.message.Message) -> Optional[str]:
+def _html_body(message: email.message.Message) -> str | None:
     for part in message.walk():
         if part.get_content_type() == "text/html":
             payload = part.get_payload(decode=True)

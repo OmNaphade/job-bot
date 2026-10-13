@@ -1,0 +1,25 @@
+[project]
+name = "jobalert"
+dynamic = ["version"]
+description = "Fetches jobs from many sources, filters them, and pushes new matches to Telegram."
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+extend-exclude = [".venv", "data"]
+
+[tool.ruff.lint]
+# E/W pycodestyle, F pyflakes, I import order, B bugbear, UP pyupgrade, SIM simplifications.
+select = ["E", "W", "F", "I", "B", "UP", "SIM"]
+ignore = [
+  "SIM108",  # a plain if/else is often clearer than a ternary
+  "B904",    # we deliberately re-raise as FetchError in a few places
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]

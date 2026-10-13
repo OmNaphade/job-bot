@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -6,7 +6,7 @@ from jobalert import pipeline
 from jobalert.notify import Telegram
 from tests.test_core import FakeSource, make_job
 
-NOW = datetime.now(timezone.utc)
+NOW = datetime.now(UTC)
 
 CONFIG = {
     "keywords": {"include": ["python"], "exclude": ["senior"]},
@@ -177,3 +177,42 @@ def test_throttled_source_sits_out_runs_that_come_too_soon(env_setup):
     second = pipeline.run(CONFIG)
     assert len(calls) == 1  # the second run was within the hour, so no request was made
     assert second.reports[0].skipped
+
+
+# ---------------------------------------------------------------- quiet hours, daily summary
+
+def test_quiet_hours_window_including_overnight_wrap():
+    at = lambda hour: datetime(2026, 10, 13, hour, 17)  # noqa: E731
+    day = {"start": 0, "end": 7}
+    assert pipeline.in_quiet_hours(at(1), day) and pipeline.in_quiet_hours(at(6), day)
+    assert not pipeline.in_quiet_hours(at(7), day) and not pipeline.in_quiet_hours(at(23), day)
+    night = {"start": 23, "end": 6}
+    assert pipeline.in_quiet_hours(at(23), night) and pipeline.in_quiet_hours(at(2), night)
+    assert not pipeline.in_quiet_hours(at(12), night)
+    assert not pipeline.in_quiet_hours(at(3), None)
+
+
+def test_run_during_quiet_hours_does_nothing(env_setup, monkeypatch):
+    env_setup["sources"] = [FakeSource(jobs(2))]
+    monkeypatch.setattr(pipeline, "in_quiet_hours", lambda *_: True)
+    result = pipeline.run(CONFIG)
+    assert result.quiet and env_setup["telegram"].messages == []
+    # ...but a manual run (or dry-run) ignores quiet hours
+    assert not pipeline.run(CONFIG, dry_run=True).quiet
+
+
+def test_daily_summary_is_sent_once_after_the_summary_hour(env_setup):
+    config = {**CONFIG, "notify": {**CONFIG["notify"], "daily_summary_hour": 0, "timezone": "UTC"}}
+    env_setup["sources"] = [FakeSource(jobs(1))]
+    pipeline.run(config)
+    summaries = [m for m in env_setup["telegram"].messages if "Daily summary" in m]
+    assert len(summaries) == 1 and "Jobs sent: 1" in summaries[0] and "Fake" not in summaries[0]
+
+    pipeline.run(config)
+    assert len([m for m in env_setup["telegram"].messages if "Daily summary" in m]) == 1  # not repeated that day
+
+
+def test_no_summary_when_not_configured(env_setup):
+    env_setup["sources"] = [FakeSource(jobs(1))]
+    pipeline.run(CONFIG)
+    assert not [m for m in env_setup["telegram"].messages if "Daily summary" in m]

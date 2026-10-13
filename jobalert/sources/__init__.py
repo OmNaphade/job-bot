@@ -42,9 +42,8 @@ def build_sources(config: dict) -> list[Source]:
         app_id, app_key = env("ADZUNA_APP_ID"), env("ADZUNA_APP_KEY")
         if app_id and app_key and s.get("queries"):
             sources.append(Adzuna(s, app_id, app_key))
-    if s := section("jooble"):
-        if env("JOOBLE_API_KEY") and s.get("queries"):
-            sources.append(Jooble(s, env("JOOBLE_API_KEY")))
+    if (s := section("jooble")) and env("JOOBLE_API_KEY") and s.get("queries"):
+        sources.append(Jooble(s, env("JOOBLE_API_KEY")))
 
     if s := section("remote_boards"):
         sources.extend(remote_boards.build(s))

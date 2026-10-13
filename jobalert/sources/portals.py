@@ -53,7 +53,8 @@ class Foundit(Source):
                 continue
             low = (item.get("minimumSalary") or {}).get("absoluteValue")
             high = (item.get("maximumSalary") or {}).get("absoluteValue")
-            salary = f"₹{_lpa(low)}-{_lpa(high)} LPA" if low and high and str(item.get("hideSalary")) != "1" else ""
+            shown = bool(low and high) and str(item.get("hideSalary")) != "1"
+            salary = f"₹{_lpa(low)}-{_lpa(high)} LPA" if shown else ""
             skills = [s.get("text", "") for s in item.get("itSkills") or [] if isinstance(s, dict)]
             jobs.append(
                 Job(
@@ -67,6 +68,7 @@ class Foundit(Source):
                     min_exp=(item.get("minimumExperience") or {}).get("years"),
                     max_exp=(item.get("maximumExperience") or {}).get("years"),
                     salary=salary,
+                    salary_lpa=low / 100000 if shown else None,
                 )
             )
         return jobs

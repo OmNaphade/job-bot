@@ -2,16 +2,46 @@ import argparse
 import logging
 import sys
 
+from . import __version__
 from .config import env, load_config
 from .notify import Telegram, source_label
 from .pipeline import run
 
 
+def _status(report) -> str:
+    if report.error:
+        return f"FAILED: {report.error}"
+    if report.skipped:
+        return f"skipped ({report.skipped})"
+    return "ok"
+
+
+def _write_step_summary(result) -> None:
+    """On GitHub Actions, shows the run's table on the run page (the job summary)."""
+    path = env("GITHUB_STEP_SUMMARY")
+    if not path:
+        return
+    lines = ["### Job alert run", ""]
+    if result.quiet:
+        lines.append("Quiet hours: skipped.")
+    else:
+        lines += ["| Source | Fetched | New | Status |", "|---|---:|---:|---|"]
+        for report in sorted(result.reports, key=lambda r: r.name):
+            lines.append(f"| {report.name} | {report.fetched} | {report.new} | {_status(report).replace('|', '/')} |")
+        if result.rejected:
+            lines += ["", "Filtered out: " + ", ".join(f"{n} {why}" for why, n in sorted(result.rejected.items()))]
+        lines += ["", f"**Alerts sent: {result.sent}**"]
+    with open(path, "a", encoding="utf-8") as handle:
+        handle.write("\n".join(lines) + "\n")
+
+
 def _print_report(result, dry_run: bool) -> None:
+    if result.quiet:
+        print("Quiet hours: nothing checked this run.")
+        return
     print(f"\n{'source':<28}{'fetched':>8}{'new':>6}  status")
     for report in sorted(result.reports, key=lambda r: r.name):
-        status = f"FAILED: {report.error}" if report.error else f"skipped ({report.skipped})" if report.skipped else "ok"
-        print(f"{report.name:<28}{report.fetched:>8}{report.new:>6}  {status}")
+        print(f"{report.name:<28}{report.fetched:>8}{report.new:>6}  {_status(report)}")
     if result.rejected:
         print("\nfiltered out: " + ", ".join(f"{n} {why}" for why, n in sorted(result.rejected.items())))
     verb = "would send" if dry_run else "sent"
@@ -31,10 +61,11 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="jobalert", description="Push new matching jobs to Telegram.")
     parser.add_argument("--config", help="path to config.yaml (default: ./config.yaml)")
     parser.add_argument("-v", "--verbose", action="store_true")
+    parser.add_argument("--version", action="version", version=f"jobalert {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
 
     run_parser = commands.add_parser("run", help="fetch, filter and send new jobs once")
-    run_parser.add_argument("--dry-run", action="store_true", help="print what would be sent; send nothing, save nothing")
+    run_parser.add_argument("--dry-run", action="store_true", help="show what would be sent; send and save nothing")
     run_parser.add_argument("--only", help="only sources whose name contains this (e.g. linkedin)")
     commands.add_parser("test-telegram", help="send a test message to check your bot token and chat id")
 
@@ -57,6 +88,7 @@ def main(argv: list[str] | None = None) -> int:
 
     result = run(config, dry_run=args.dry_run, only=args.only)
     _print_report(result, args.dry_run)
+    _write_step_summary(result)
     # A broken source shouldn't fail the whole run, but if *nothing* worked, say so loudly.
     return 1 if result.reports and all(r.error for r in result.reports) else 0
 

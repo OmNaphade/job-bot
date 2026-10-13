@@ -1,7 +1,7 @@
 import json
 import os
 import tempfile
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .models import Job
@@ -14,6 +14,7 @@ class State:
 
     seen:      job link / dedup keys already alerted on (-> ISO timestamp, pruned after 45 days)
     failures:  consecutive failed runs per source
+    stats:     today's runs / alerts sent (reset each local day), used for the daily summary message
     alerted:   sources we've already warned about during the current failure streak
     initialized: False until a run has actually fetched something, so the "first run" flood
                protection still applies if the very first run happens while every source is down
@@ -25,6 +26,7 @@ class State:
         self.failures: dict[str, int] = {}
         self.alerted: set[str] = set()
         self.last_fetch: dict[str, str] = {}
+        self.stats: dict = {}
         self.initialized = False
         self._load()
 
@@ -39,27 +41,28 @@ class State:
         self.failures = {k: int(v) for k, v in data.get("failures", {}).items()}
         self.alerted = set(data.get("alerted", []))
         self.last_fetch = dict(data.get("last_fetch", {}))
+        self.stats = dict(data.get("stats", {}))
         self.initialized = bool(data.get("initialized", bool(self.seen)))
 
     def minutes_since_fetch(self, source_name: str) -> float | None:
         stamp = self.last_fetch.get(source_name)
         if not stamp:
             return None
-        return (datetime.now(timezone.utc) - datetime.fromisoformat(stamp)).total_seconds() / 60
+        return (datetime.now(UTC) - datetime.fromisoformat(stamp)).total_seconds() / 60
 
     def mark_fetched(self, source_name: str) -> None:
-        self.last_fetch[source_name] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        self.last_fetch[source_name] = datetime.now(UTC).isoformat(timespec="seconds")
 
     def has_seen(self, job: Job) -> bool:
         return job.link_key in self.seen or job.dedup_key in self.seen
 
     def mark_seen(self, job: Job) -> None:
-        stamp = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        stamp = datetime.now(UTC).isoformat(timespec="seconds")
         self.seen[job.link_key] = stamp
         self.seen[job.dedup_key] = stamp
 
     def save(self) -> None:
-        cutoff = (datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)).isoformat(timespec="seconds")
+        cutoff = (datetime.now(UTC) - timedelta(days=RETENTION_DAYS)).isoformat(timespec="seconds")
         self.seen = {key: stamp for key, stamp in self.seen.items() if stamp >= cutoff}
         payload = {
             "initialized": self.initialized,
@@ -67,9 +70,10 @@ class State:
             "failures": self.failures,
             "alerted": sorted(self.alerted),
             "last_fetch": self.last_fetch,
+            "stats": self.stats,
             # Changes once a day, so the Actions state branch gets a daily commit even when idle; that
             # repo activity is what stops GitHub from pausing the schedule after 60 quiet days.
-            "last_run": datetime.now(timezone.utc).date().isoformat(),
+            "last_run": datetime.now(UTC).date().isoformat(),
         }
         self.path.parent.mkdir(parents=True, exist_ok=True)
         # Write-then-rename so a crash mid-write can't leave a half-written state file.
