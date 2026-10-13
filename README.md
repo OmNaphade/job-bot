@@ -1,92 +1,112 @@
 # Job Alert
 
-A small Python script that checks job sources on a schedule and sends new matches to your Telegram bot. No server, no database, no app: a config file, a `.env` for secrets, and a scheduler (GitHub Actions or Windows Task Scheduler).
+[![CI](https://github.com/OmNaphade/job-bot/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/OmNaphade/job-bot/actions/workflows/ci.yml)
 
+A Python script that checks job sources every 2 hours and sends new matches to your Telegram bot. No server, no
+database, no app: a config file, a `.env` for secrets, and GitHub Actions (or Windows Task Scheduler) to run it.
+
+```text
+sources ──► filter + score ──► skip what you've already seen ──► Telegram
 ```
-sources ──► filter + score ──► dedupe against state.json ──► Telegram
-```
 
-- **Fresh only.** Jobs older than 3 days, senior titles, jobs asking for more experience than you have, and wrong locations are dropped.
-- **Best first.** Each job gets a score (keyword hits in the title, boost words, your city, how new it is). Top matches arrive as their own message with an *Apply* button; the rest as a compact digest.
-- **No repeats.** The same role seen on LinkedIn and Foundit is alerted once. If Telegram is down, unsent jobs are retried next run.
-- **Tells you when a source breaks.** After 4 failed runs in a row you get one Telegram warning.
+## What it does
 
-## Setup (5 minutes)
+- **Good results, not just many.** Drops senior titles, jobs asking for more experience than you have, wrong
+  places and region-locked remote jobs. LinkedIn jobs are opened and their *description* is read, so experience
+  and tech stack are checked for real. Titles like "Associate Engineer" or "Analyst" get in only when the
+  description proves it is a Java/Spring/React/DevOps role.
+- **Best first.** Each job is scored (keywords in the title, skills, boost words, your city, how new it is). Top
+  matches arrive as their own message with an *Apply* button; the rest in a compact digest.
+- **No repeats.** The same role seen on LinkedIn and Foundit is alerted once. If Telegram is down, unsent jobs are
+  retried on the next run.
+- **Quiet nights.** No checks or pings from 00:00 to 07:00 IST; the 07:17 run sends the overnight jobs.
+- **Daily summary** at ~21:00 (checks run, jobs sent per source, anything failing) as proof it's alive.
+- **Tells you when a source breaks** after 3 failed runs in a row.
+
+## Sources
+
+| Source | Notes |
+| --- | --- |
+| LinkedIn search | Public logged-out search, no account. Throttled to about once an hour. |
+| LinkedIn / Naukri / Indeed alert emails | Read from your Gmail over IMAP: the dependable way to get Naukri. |
+| Foundit | Experience range, salary and skills included. About once an hour. |
+| Unstop | Jobs and internships, strong for freshers. |
+| Adzuna, Jooble | Free API keys (optional). |
+| Company career pages | Greenhouse / Lever / Ashby: often the first place a role appears. |
+| Remote job boards | WeWorkRemotely, Himalayas, Remotive, RemoteOK, Arbeitnow, Jobspresso, NoDesk. |
+| Public Telegram channels | Add channel usernames in `config.yaml`. |
+
+## Setup
 
 ```powershell
 python -m venv .venv
 .venv\Scripts\pip install -r requirements.txt
-copy .env.example .env          # then fill in TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
+copy .env.example .env          # fill in TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID
 .venv\Scripts\python -m jobalert test-telegram      # you should get a message
 .venv\Scripts\python -m jobalert run --dry-run      # shows what would be sent, sends nothing
 .venv\Scripts\python -m jobalert run                # the real thing
 ```
 
-Getting the Telegram values: create a bot with [@BotFather](https://t.me/BotFather) for the token, message your bot once, then open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id`.
-
+Telegram values: create a bot with [@BotFather](https://t.me/BotFather) for the token, message your bot once, then
+open `https://api.telegram.org/bot<TOKEN>/getUpdates` and copy `chat.id`.
 The first real run alerts on your best 10 matches and quietly remembers the rest, so you aren't flooded.
 
-## Tuning
-
-Everything you'd want to change is in [config.yaml](config.yaml): keywords, exclusions, locations, experience cap, which sources are on, LinkedIn searches, Foundit queries, company boards. Run `--dry-run` after editing to see the effect. `--only linkedin` limits a run to one source.
+Everything you'd want to change (keywords, exclusions, places, experience cap, sources, quiet hours) is in
+[config.yaml](config.yaml). `--only linkedin` limits a run to one source.
 
 ## Running it automatically
 
-**GitHub Actions (nothing needs to stay on).** Push this repo, then add the secrets from `.env` under *Settings → Secrets and variables → Actions* (`TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`, and optionally `ALERT_EMAIL_ADDRESS`, `ALERT_EMAIL_APP_PASSWORD`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY`, `JOOBLE_API_KEY`). [jobalert.yml](.github/workflows/jobalert.yml) runs at :17 and :47 past every hour (off the busy :00/:30 marks, which GitHub delays) and keeps its memory on a `state` branch. Start it once from the *Actions* tab with *Run workflow*.
+**GitHub Actions** (nothing needs to stay on): add your `.env` values as repository secrets and run the workflow
+once from the Actions tab. After that it runs by itself every 2 hours at :17 India time. Full steps:
+[docs/RUNBOOK.md](docs/RUNBOOK.md). `config.yaml` is committed, so on a public repo your searches and city are
+visible; secrets are not.
 
-Note that `config.yaml` is committed, so on a public repo your search terms and city are visible, and so are the job links on the `state` branch. Secrets are not: they live only in GitHub's encrypted secrets and your local `.env`.
-
-**Windows Task Scheduler (runs while your PC is on).** From an admin prompt:
+**Windows Task Scheduler** (only while your PC is on):
 
 ```powershell
-schtasks /Create /SC MINUTE /MO 30 /TN "JobAlert" /TR "D:\PRACTICE\job-alert\run.bat"
+schtasks /Create /SC HOURLY /MO 2 /ST 07:17 /TN "JobAlert" /TR "D:\PRACTICE\job-alert\run.bat"
 ```
 
-Output is appended to `data\run.log`. Run only one of the two schedulers: they keep separate memories and you'd get duplicates.
+Use one scheduler, not both: they keep separate memories and you'd get duplicates.
 
-## Getting LinkedIn and Naukri jobs
+## LinkedIn and Naukri
 
-Neither site offers a job feed, and both fight bots, so there are three routes, from most to least dependable:
+Neither offers a job feed and both fight bots, so, from most to least dependable:
 
-1. **Saved-search emails (recommended for both).** On each site, create a job alert and set it to email you (LinkedIn: search → *Set alert*; Naukri: *Create job alert* on any search). Point them at a Gmail account, make an [App Password](https://myaccount.google.com/apppasswords), and put it in `.env`. The `email_alerts` source reads those emails over IMAP and turns them into Telegram alerts. This uses the sites' own alert feature, so there is nothing to block. If a Gmail filter files the emails under a label, add the label under `mailboxes` in `config.yaml` (and tick *Show in IMAP* for it in Gmail's label settings).
-   - LinkedIn and Indeed email layouts were checked against real emails. **Naukri's parser has never seen a real job-alert email**, so treat it as unproven: run `python -m jobalert run --only email --dry-run`, and if it logs *no jobs recognised in a naukri email*, that email's layout needs a parser tweak.
-2. **LinkedIn search (`linkedin` source).** Uses the public, logged-out search endpoint with your keywords, locations and experience level, and returns jobs posted in the last 24 hours with their real posting time. It is unofficial: LinkedIn rate-limits it (the script waits and retries) and often blocks GitHub's servers entirely. It works best from your own PC via Task Scheduler. If it is blocked, you get the failure warning and route 1 still covers LinkedIn.
-3. **Naukri directly: not possible.** Its search API answers `recaptcha required` to scripts. Use route 1.
+1. **Saved-search emails.** On each site create a job alert that emails a Gmail account, make an
+   [App Password](https://myaccount.google.com/apppasswords) for it, put it in `.env`. The `email_alerts` source
+   turns those emails into alerts (LinkedIn ones are also opened and checked like search results). Nothing to block.
+   Naukri's parser has not been tested against a real Naukri email yet; if `--only email --dry-run` logs *no jobs
+   recognised in a naukri email*, that layout needs a tweak.
+2. **LinkedIn search** (`linkedin` source): uses the public search page. Unofficial; LinkedIn throttles it and
+   often blocks GitHub's servers. Works best from your own PC.
+3. **Naukri directly:** not possible (its API answers `recaptcha required` to scripts).
 
-Other sources that are reliable today and cover a lot of the same ground: **Foundit** (also gives experience and salary), **Unstop**, company career pages (Greenhouse/Lever/Ashby, which often list a role before any job board), Adzuna/Jooble (free keys), and public Telegram job channels (add usernames under `telegram_channels`).
+### Will this get my accounts blocked?
 
-## Will this get my accounts blocked?
+The script never logs in to LinkedIn, Naukri, Foundit or Indeed, so there is no account for them to flag. The only
+login is your own Gmail, read-only, with an app password. A site can still throttle or block the *IP address*
+(a `429` in the log): temporary, not an account issue. To keep that unlikely: LinkedIn and Foundit are only
+asked about once an hour, requests are spaced seconds apart, job pages are opened only for *new* jobs (capped and
+time-boxed), and after two refused searches or three refused pages it stops asking for the rest of that run.
+For zero exposure, set `linkedin.enabled` and `foundit.enabled` to `false` and rely on the email alerts.
 
-The script never logs in to LinkedIn, Naukri, Foundit or Indeed, so there is no account on those sites for them to flag. The only login anywhere is your own Gmail inbox, read-only over IMAP with an app password, which is a normal supported use.
+## Project
 
-What a site *can* do to a logged-out client is throttle or block its IP address (you'll see `429` in the log). It is temporary and doesn't touch your account, but it can briefly affect that site in your own browser too. The script is built to stay light:
-
-- LinkedIn is searched at most once an hour and Foundit once an hour (`min_interval_minutes`), however often the scheduler fires.
-- Requests are spaced seconds apart, and LinkedIn job pages are opened only for *new* jobs, capped per run and by a time budget.
-- After two refused searches in a row, or three refused job pages, it stops asking for the rest of that run.
-- Naukri is never contacted at all; it only arrives through the alert emails Naukri sends you.
-
-For zero exposure, set `linkedin.enabled: false` and `foundit.enabled: false` in `config.yaml` and rely on the email alerts. You lose speed and coverage, but nothing touches those sites except you.
-
-## Layout
-
-```
-jobalert/
-  __main__.py        CLI: run [--dry-run] [--only X], test-telegram
-  pipeline.py        fetch all sources -> filter -> dedupe -> send -> save state
-  filters.py         include/exclude/location/age/experience rules and scoring
-  notify.py          Telegram messages
-  store.py           state.json (what's been alerted, source failure counts)
-  sources/           one small module per source
+```text
+jobalert/            the package (pipeline, filters, notify, store, sources/)
 config.yaml          what you want
 tests/               pytest, no network
+docs/                ARCHITECTURE.md, RUNBOOK.md
+.github/workflows/   ci.yml, jobalert.yml (production schedule), release.yml
 ```
 
-Tests: `pytest -q`.
+Development follows `feature/*` → `develop` → `main` (production); see [CONTRIBUTING.md](CONTRIBUTING.md).
+Changes are listed in [CHANGELOG.md](CHANGELOG.md). Security notes: [SECURITY.md](SECURITY.md).
 
 ## Troubleshooting
 
-- **`IMAP login failed ... AUTHENTICATIONFAILED`**: the Gmail App Password is wrong or revoked. Create a new one, and make sure IMAP is enabled in Gmail settings.
-- **`linkedin ... 429`**: LinkedIn is throttling you. Fewer `searches`, `pages: 1`, or run from your own PC instead of GitHub.
-- **Nothing arrives**: run with `--dry-run`; the *filtered out* line shows which rule is removing jobs (`too old`, `location`, `excluded keyword`, ...).
-- **Want to re-send everything**: delete `data/state.json` (or the `state` branch on GitHub).
+- **`IMAP login failed`**: the Gmail App Password is wrong or revoked; create a new one.
+- **`linkedin ... 429`**: LinkedIn is throttling you; the run carries on without it.
+- **Nothing arrives**: run with `--dry-run`; the *filtered out* line shows which rule removes jobs.
+- **Re-send everything**: delete `data/state.json` locally, or the `state` branch on GitHub.
