@@ -38,7 +38,7 @@ jobs:
         if: env.HAS_SECRETS != 'true'
         run: echo "::warning::TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secrets are not set; nothing was run."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.HAS_SECRETS == 'true'
 
       - uses: actions/setup-python@v7
