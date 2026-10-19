@@ -78,12 +78,15 @@ jobs:
       # Every run (quiet ones too) appends a row to runs.md, so every run makes one commit on `state`.
       - name: Save state and run log
         if: always() && env.HAS_SECRETS == 'true' && env.LIVE == 'true'
+        env:
+          # Commits are authored as the repo owner's GitHub account, so they show under your profile.
+          GIT_USER: ${{ github.repository_owner }}
         run: |
           [ -f data/state.json ] || exit 0
           cp data/state.json "$RUNNER_TEMP/state.json"
           if [ -f data/runs.md ]; then cp data/runs.md "$RUNNER_TEMP/runs.md"; fi
-          git config user.name "job-alert"
-          git config user.email "job-alert@users.noreply.github.com"
+          git config user.name "$GIT_USER"
+          git config user.email "$GIT_USER@users.noreply.github.com"
           if git fetch --depth=1 origin state 2>/dev/null; then
             git checkout -q -B state FETCH_HEAD
           else
